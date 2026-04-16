@@ -1,6 +1,7 @@
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pymongo.errors import DuplicateKeyError
 
+from app.community import backfill_profile_embeddings, rank_community_candidates, refresh_profile_embedding_for_user
 from app.db import db
 from app.matching import score_profiles, score_user_for_event
 from app.profile_ai import (
@@ -30,6 +31,17 @@ router = APIRouter()
 
 
 def _build_thread_payload(thread: dict) -> dict:
+    participant_user_ids = thread.get("participant_user_ids", [])
+    participant_profiles = list(
+        db.users.find(
+            {"_id": {"$in": participant_user_ids}},
+            {"_id": 1, "display_name": 1, "username": 1, "avatar_url": 1},
+        )
+    ) if participant_user_ids else []
+    event = db.events.find_one(
+        {"_id": thread.get("event_id")},
+        {"_id": 1, "title": 1, "description": 1, "location.name": 1},
+    ) if thread.get("event_id") else None
     messages = list(
         db.chat_messages.find(
             {"thread_id": thread["_id"]},
@@ -54,11 +66,14 @@ def _build_thread_payload(thread: dict) -> dict:
             "thread_type": thread["thread_type"],
             "owner_user_id": thread.get("owner_user_id"),
             "event_id": thread.get("event_id"),
-            "participant_user_ids": thread.get("participant_user_ids", []),
+            "participant_user_ids": participant_user_ids,
+            "participant_profiles": participant_profiles,
             "status": thread.get("status"),
             "created_at": thread.get("created_at"),
             "updated_at": thread.get("updated_at"),
             "last_message_at": thread.get("last_message_at"),
+            "title": event.get("title") if event else thread.get("title"),
+            "subtitle": event.get("location", {}).get("name") if event else thread.get("subtitle"),
         },
         "items": messages,
     }
@@ -87,6 +102,18 @@ def _get_main_thread_or_404(user_id: str) -> dict:
     if not thread:
         raise HTTPException(status_code=404, detail="main chat thread not found")
     return thread
+
+
+def _get_thread_or_404(thread_id: str) -> dict:
+    thread = db.chat_threads.find_one({"_id": thread_id})
+    if not thread:
+        raise HTTPException(status_code=404, detail="thread not found")
+    return thread
+
+
+def _assert_thread_participant(thread: dict, user_id: str) -> None:
+    if user_id not in thread.get("participant_user_ids", []):
+        raise HTTPException(status_code=403, detail="user is not a participant in this thread")
 
 
 def _get_event_context(event_id: str) -> tuple[dict, dict | None, list[dict], set[str]]:
@@ -272,6 +299,8 @@ def update_user(user_id: str, payload: UserPatch) -> dict:
     updates = payload.model_dump(exclude_none=True)
     if updates:
         db.users.update_one({"_id": user_id}, {"$set": updates})
+        if "persona" in updates or "display_name" in updates or "username" in updates:
+            refresh_profile_embedding_for_user(user_id)
     return db.users.find_one({"_id": user_id})
 
 
@@ -325,6 +354,7 @@ def end_profile_ai(user_id: str, payload: ProfileAiTurnRequest) -> dict:
             {"_id": user_id},
             {"$set": {"persona.profile_dict": result["final_profile_dict"]}},
         )
+        refresh_profile_embedding_for_user(user_id)
     return result
 
 
@@ -344,6 +374,8 @@ def create_or_get_direct_message(payload: DirectMessageCreate) -> dict:
                 "owner_user_id": None,
                 "event_id": None,
                 "participant_user_ids": [payload.user_id, payload.other_user_id],
+                "title": other_user.get("display_name"),
+                "subtitle": other_user.get("username"),
                 "status": "active",
                 "created_at": now,
                 "updated_at": now,
@@ -369,7 +401,7 @@ def create_or_get_direct_message(payload: DirectMessageCreate) -> dict:
             },
         )
 
-    return db.chat_threads.find_one({"_id": thread_id})
+    return _build_thread_payload(db.chat_threads.find_one({"_id": thread_id}))
 
 
 @router.post("/events")
@@ -530,6 +562,8 @@ def get_event_attendees(event_id: str) -> list[dict]:
 
 def _create_chat_message(thread: dict, payload: ChatMessageCreate) -> dict:
     now = utc_now()
+    if payload.sender_user_id and payload.sender_user_id not in thread.get("participant_user_ids", []):
+        raise HTTPException(status_code=403, detail="sender is not a participant in this thread")
     document = {
         "_id": prefixed_id("msg"),
         "thread_id": thread["_id"],
@@ -549,6 +583,24 @@ def _create_chat_message(thread: dict, payload: ChatMessageCreate) -> dict:
         {"$set": {"updated_at": now, "last_message_at": now}},
     )
     return document
+
+
+@router.get("/community/{user_id}")
+def get_ranked_community(user_id: str, limit: int = 10) -> dict:
+    current_user = _get_user_or_404(user_id)
+    candidate_users = list(
+        db.users.find(
+            {
+                "_id": {"$ne": user_id},
+            }
+        )
+    )
+    return rank_community_candidates(current_user, candidate_users, limit=max(1, min(limit, 20)))
+
+
+@router.post("/users/backfill-profile-embeddings")
+def backfill_profile_embeddings_route(batch_size: int = 16) -> dict:
+    return backfill_profile_embeddings(batch_size=batch_size)
 
 
 @router.get("/chat/{user_id}")
@@ -572,6 +624,19 @@ async def transcribe_main_chat_audio(user_id: str, file: UploadFile = File(...))
         content_type=file.content_type,
         audio_bytes=audio_bytes,
     )
+
+
+@router.get("/threads/{thread_id}")
+def get_thread(thread_id: str, viewer_user_id: str) -> dict:
+    thread = _get_thread_or_404(thread_id)
+    _assert_thread_participant(thread, viewer_user_id)
+    return _build_thread_payload(thread)
+
+
+@router.post("/threads/{thread_id}/messages")
+def create_thread_message(thread_id: str, payload: ChatMessageCreate) -> dict:
+    thread = _get_thread_or_404(thread_id)
+    return _create_chat_message(thread, payload)
 
 
 @router.get("/events/{event_id}/chat")

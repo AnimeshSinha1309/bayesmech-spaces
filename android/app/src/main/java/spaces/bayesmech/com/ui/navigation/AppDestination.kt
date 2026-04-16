@@ -1,9 +1,9 @@
 package spaces.bayesmech.com.ui.navigation
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.LibraryBooks
 import androidx.compose.material.icons.rounded.EventAvailable
 import androidx.compose.material.icons.rounded.Groups
-import androidx.compose.material.icons.rounded.LibraryBooks
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -30,16 +30,16 @@ enum class AppDestination(
     Content(
         route = "content",
         label = "Content",
-        icon = Icons.Rounded.LibraryBooks,
+        icon = Icons.AutoMirrored.Rounded.LibraryBooks,
     ),
     ProfileAi(
         route = "profile-ai",
         label = "Talk to AI",
         icon = Icons.Rounded.Person,
     ),
-    EventChat(
-        route = "event-chat",
-        label = "Event Chat",
+    Conversation(
+        route = "conversation",
+        label = "Conversation",
         icon = Icons.Rounded.Groups,
     ),
     Profile(

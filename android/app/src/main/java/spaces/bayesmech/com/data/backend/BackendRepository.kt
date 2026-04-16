@@ -13,12 +13,17 @@ import org.json.JSONObject
 import spaces.bayesmech.com.data.ChatEvent
 import spaces.bayesmech.com.data.ChatMessage
 import spaces.bayesmech.com.data.ChatRepository
+import spaces.bayesmech.com.data.CommunityCandidate
+import spaces.bayesmech.com.data.CommunityRepository
+import spaces.bayesmech.com.data.ConversationRepository
+import spaces.bayesmech.com.data.ConversationThread
 import spaces.bayesmech.com.data.CurrentUser
 import spaces.bayesmech.com.data.CurrentUserRepository
 import spaces.bayesmech.com.data.EventAttendee
 import spaces.bayesmech.com.data.InterestEntry
 import spaces.bayesmech.com.data.JourneyEntry
 import spaces.bayesmech.com.data.ProfileDictionary
+import spaces.bayesmech.com.data.ThreadParticipant
 import java.io.File
 import java.io.IOException
 import java.time.Instant
@@ -28,9 +33,10 @@ import java.util.Locale
 
 class BackendRepository(
     private val client: OkHttpClient = OkHttpClient(),
-) : ChatRepository, CurrentUserRepository {
+) : ChatRepository, CurrentUserRepository, CommunityRepository, ConversationRepository {
 
     private var cachedBootstrap: BootstrapPayload? = null
+    private val cachedCommunityByUserId = mutableMapOf<String, List<CommunityCandidate>>()
 
     override suspend fun getCurrentUser(userId: String): CurrentUser {
         return withContext(Dispatchers.IO) {
@@ -42,6 +48,91 @@ class BackendRepository(
         return withContext(Dispatchers.IO) {
             loadBootstrap(userId).messages
         }
+    }
+
+    override suspend fun getCommunity(userId: String): List<CommunityCandidate> {
+        return withContext(Dispatchers.IO) {
+            cachedCommunityByUserId[userId]?.let { return@withContext it }
+
+            val request = Request.Builder()
+                .url("${BackendConfig.baseUrl}/community/$userId?limit=10")
+                .get()
+                .build()
+            val responseJson = executeJsonRequest(request)
+            val results = responseJson.getJSONArray("results")
+            buildList {
+                for (index in 0 until results.length()) {
+                    val item = results.getJSONObject(index)
+                    add(
+                        CommunityCandidate(
+                            userId = item.getString("user_id"),
+                            displayName = item.optString("display_name", "Unknown"),
+                            username = item.optNullableString("username"),
+                            avatarUrl = item.optNullableString("avatar_url"),
+                            headline = item.optString("headline"),
+                            score = item.optInt("score"),
+                            reasoning = item.optString("reasoning"),
+                            whatMatches = item.optJSONArray("what_matches").toStringList(),
+                            sharedEventCount = item.optInt("shared_event_count"),
+                        ),
+                    )
+                }
+            }.also { cachedCommunityByUserId[userId] = it }
+        }
+    }
+
+    override suspend fun openDirectMessage(
+        userId: String,
+        otherUserId: String,
+    ): ConversationThread = withContext(Dispatchers.IO) {
+        val requestJson = JSONObject()
+            .put("user_id", userId)
+            .put("other_user_id", otherUserId)
+        val request = Request.Builder()
+            .url("${BackendConfig.baseUrl}/users/direct-message")
+            .post(requestJson.toString().toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        parseConversationThread(executeJsonRequest(request), userId)
+    }
+
+    override suspend fun getThread(
+        threadId: String,
+        viewerUserId: String,
+    ): ConversationThread = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${BackendConfig.baseUrl}/threads/$threadId?viewer_user_id=$viewerUserId")
+            .get()
+            .build()
+        parseConversationThread(executeJsonRequest(request), viewerUserId)
+    }
+
+    override suspend fun getEventChat(
+        eventId: String,
+        viewerUserId: String,
+    ): ConversationThread = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${BackendConfig.baseUrl}/events/$eventId/chat")
+            .get()
+            .build()
+        parseConversationThread(executeJsonRequest(request), viewerUserId)
+    }
+
+    override suspend fun sendThreadMessage(
+        threadId: String,
+        senderUserId: String,
+        body: String,
+    ): ChatMessage = withContext(Dispatchers.IO) {
+        val requestJson = JSONObject()
+            .put("sender_type", "user")
+            .put("sender_user_id", senderUserId)
+            .put("message_type", "text")
+            .put("content_text", body)
+        val request = Request.Builder()
+            .url("${BackendConfig.baseUrl}/threads/$threadId/messages")
+            .post(requestJson.toString().toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        val currentUser = cachedBootstrap?.currentUser ?: getCurrentUser(senderUserId)
+        parseChatMessage(executeJsonRequest(request), senderUserId, currentUser.displayName)
     }
 
     override suspend fun sendMessage(
@@ -198,6 +289,7 @@ class BackendRepository(
             .toAttendees()
         val attendeeCount = eventJson.optInt("attendee_count", attendees.size)
         return ChatEvent(
+            eventId = eventJson.optString("event_id"),
             title = eventJson.optString("title"),
             locationName = eventJson.optString("location_name"),
             mapsUrl = eventJson.optString("maps_url"),
@@ -205,6 +297,77 @@ class BackendRepository(
             attendees = attendees,
             additionalAttendeeCount = (attendeeCount - attendees.size).coerceAtLeast(0),
         )
+    }
+
+    private fun parseConversationThread(
+        json: JSONObject,
+        currentUserId: String,
+    ): ConversationThread {
+        val thread = json.getJSONObject("thread")
+        val participants = thread.optJSONArray("participant_profiles")
+        val messages = json.optJSONArray("items")
+        return ConversationThread(
+            threadId = thread.getString("thread_id"),
+            threadType = thread.optString("thread_type"),
+            eventId = thread.optNullableString("event_id"),
+            title = resolveThreadTitle(thread, participants, currentUserId),
+            subtitle = resolveThreadSubtitle(thread, participants, currentUserId),
+            participantUserIds = thread.optJSONArray("participant_user_ids").toStringList(),
+            participants = participants.toParticipants(),
+            messages = buildList {
+                if (messages != null) {
+                    val currentUserName = cachedBootstrap?.currentUser?.displayName ?: "You"
+                    for (index in 0 until messages.length()) {
+                        add(parseChatMessage(messages.getJSONObject(index), currentUserId, currentUserName))
+                    }
+                }
+            },
+        )
+    }
+
+    private fun resolveThreadTitle(
+        thread: JSONObject,
+        participants: JSONArray?,
+        currentUserId: String,
+    ): String {
+        if (thread.optString("thread_type") == "direct_message") {
+            return participants
+                ?.toParticipants()
+                ?.firstOrNull { it.userId != currentUserId }
+                ?.displayName
+                ?: "Conversation"
+        }
+        val explicitTitle = thread.optString("title")
+        if (explicitTitle.isNotBlank()) {
+            return explicitTitle
+        }
+        if (thread.optString("thread_type") == "event_chat") {
+            return "Event Chat"
+        }
+        return participants
+            ?.toParticipants()
+            ?.firstOrNull { it.userId != currentUserId }
+            ?.displayName
+            ?: "Conversation"
+    }
+
+    private fun resolveThreadSubtitle(
+        thread: JSONObject,
+        participants: JSONArray?,
+        currentUserId: String,
+    ): String? {
+        val explicitSubtitle = thread.optString("subtitle")
+        if (explicitSubtitle.isNotBlank()) {
+            return explicitSubtitle
+        }
+        if (thread.optString("thread_type") == "direct_message") {
+            return participants
+                ?.toParticipants()
+                ?.firstOrNull { it.userId != currentUserId }
+                ?.username
+                ?.let { "@$it" }
+        }
+        return null
     }
 
     private fun executeJsonRequest(request: Request): JSONObject {
@@ -277,6 +440,38 @@ class BackendRepository(
         return Instant.parse(isoTimestamp)
             .atZone(ZoneId.systemDefault())
             .format(formatter)
+    }
+
+    private fun JSONArray?.toStringList(): List<String> {
+        if (this == null) {
+            return emptyList()
+        }
+        return buildList {
+            for (index in 0 until length()) {
+                optString(index)
+                    .takeIf { it.isNotBlank() }
+                    ?.let(::add)
+            }
+        }
+    }
+
+    private fun JSONArray?.toParticipants(): List<ThreadParticipant> {
+        if (this == null) {
+            return emptyList()
+        }
+        return buildList {
+            for (index in 0 until length()) {
+                val item = optJSONObject(index) ?: continue
+                add(
+                    ThreadParticipant(
+                        userId = item.optString("_id"),
+                        displayName = item.optString("display_name"),
+                        username = item.optNullableString("username"),
+                        avatarUrl = item.optNullableString("avatar_url"),
+                    ),
+                )
+            }
+        }
     }
 
     private fun JSONObject.optNullableString(key: String): String? {

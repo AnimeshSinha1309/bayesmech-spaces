@@ -39,6 +39,7 @@ data class AudioNoteAttachment(
 )
 
 data class ChatEvent(
+    val eventId: String,
     val title: String,
     val locationName: String,
     val mapsUrl: String,
@@ -50,6 +51,36 @@ data class ChatEvent(
 data class EventAttendee(
     val displayName: String,
     val avatarUrl: String? = null,
+)
+
+data class CommunityCandidate(
+    val userId: String,
+    val displayName: String,
+    val username: String? = null,
+    val avatarUrl: String? = null,
+    val headline: String,
+    val score: Int,
+    val reasoning: String,
+    val whatMatches: List<String>,
+    val sharedEventCount: Int = 0,
+)
+
+data class ThreadParticipant(
+    val userId: String,
+    val displayName: String,
+    val username: String? = null,
+    val avatarUrl: String? = null,
+)
+
+data class ConversationThread(
+    val threadId: String,
+    val threadType: String,
+    val eventId: String? = null,
+    val title: String,
+    val subtitle: String? = null,
+    val participantUserIds: List<String>,
+    val participants: List<ThreadParticipant>,
+    val messages: List<ChatMessage>,
 )
 
 enum class SharedContentType {

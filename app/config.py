@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
     openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_KEY")
     openai_model: str = "gpt-4.1-mini"
+    openai_embedding_model: str = "text-embedding-3-small"
 
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env"),

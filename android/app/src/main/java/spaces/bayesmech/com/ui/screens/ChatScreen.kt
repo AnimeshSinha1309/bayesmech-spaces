@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 import spaces.bayesmech.com.audio.VoiceNoteRecorder
+import spaces.bayesmech.com.data.ChatEvent
 import spaces.bayesmech.com.data.ChatMessage
 import spaces.bayesmech.com.data.ChatRepository
 import spaces.bayesmech.com.data.CurrentUser
@@ -83,7 +84,7 @@ fun ChatScreen(
     chatRepository: ChatRepository,
     currentUser: CurrentUser,
     drawerState: DrawerState,
-    onOpenEventChat: () -> Unit,
+    onOpenEventChat: (ChatEvent) -> Unit,
     onProfileClick: () -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -353,7 +354,7 @@ fun ChatScreen(
 @Composable
 private fun MessageBubble(
     message: ChatMessage,
-    onOpenEventChat: () -> Unit,
+    onOpenEventChat: (ChatEvent) -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
 
@@ -400,7 +401,7 @@ private fun MessageBubble(
                         attendees = event.attendees,
                         additionalAttendeeCount = event.additionalAttendeeCount,
                         onOpenMaps = { uriHandler.openUri(event.mapsUrl) },
-                        onOpenEventChat = onOpenEventChat,
+                        onOpenEventChat = { onOpenEventChat(event) },
                     )
                 }
                 Text(
