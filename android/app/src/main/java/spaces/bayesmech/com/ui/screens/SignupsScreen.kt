@@ -21,11 +21,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import spaces.bayesmech.com.data.ChatEvent
 import spaces.bayesmech.com.data.ChatRepository
 import spaces.bayesmech.com.data.CurrentUser
@@ -39,6 +41,7 @@ fun SignupsScreen(
     onOpenEventChat: (ChatEvent) -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
+    val coroutineScope = rememberCoroutineScope()
     var events by remember { mutableStateOf<List<ChatEvent>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
@@ -123,6 +126,27 @@ fun SignupsScreen(
                                 event = event,
                                 onOpenMaps = { if (event.mapsUrl.isNotBlank()) uriHandler.openUri(event.mapsUrl) },
                                 onOpenEventChat = { onOpenEventChat(event) },
+                                actionLabel = if (event.isHostedByCurrentUser) null else "Remove RSVP",
+                                onActionClick = if (event.isHostedByCurrentUser) {
+                                    null
+                                } else {
+                                    {
+                                        coroutineScope.launch {
+                                            runCatching {
+                                                chatRepository.setEventRsvp(
+                                                    userId = currentUser.id,
+                                                    eventId = event.id,
+                                                    isRsvped = false,
+                                                )
+                                            }.onSuccess {
+                                                events = events.filterNot { it.id == event.id }
+                                                loadError = null
+                                            }.onFailure { error ->
+                                                loadError = error.message ?: "Unable to update RSVP"
+                                            }
+                                        }
+                                    }
+                                },
                             )
                         }
                     }

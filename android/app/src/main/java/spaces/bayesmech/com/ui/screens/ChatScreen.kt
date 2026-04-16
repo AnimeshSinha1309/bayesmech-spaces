@@ -300,17 +300,23 @@ fun ChatScreen(
                         message = message,
                         isAlreadyRsvped = message.event?.id?.let(rsvpedEventIds::contains) == true,
                         onOpenEventChat = onOpenEventChat,
-                        onRsvp = { eventId ->
+                        onRsvpToggle = { eventId, shouldRsvp ->
                             coroutineScope.launch {
                                 runCatching {
-                                    chatRepository.rsvpToEvent(currentUser.id, eventId)
+                                    chatRepository.setEventRsvp(
+                                        userId = currentUser.id,
+                                        eventId = eventId,
+                                        isRsvped = shouldRsvp,
+                                    )
                                 }.onSuccess {
-                                    if (!rsvpedEventIds.contains(eventId)) {
+                                    if (shouldRsvp && !rsvpedEventIds.contains(eventId)) {
                                         rsvpedEventIds += eventId
+                                    } else if (!shouldRsvp) {
+                                        rsvpedEventIds.remove(eventId)
                                     }
                                     loadError = null
                                 }.onFailure { error ->
-                                    Log.e("ChatScreen", "Failed to RSVP to event", error)
+                                    Log.e("ChatScreen", "Failed to update RSVP", error)
                                     loadError = error.message ?: "Unable to RSVP"
                                 }
                             }
@@ -435,7 +441,7 @@ fun ChatScreen(
 private fun MessageBubble(
     message: ChatMessage,
     onOpenEventChat: (ChatEvent) -> Unit,
-    onRsvp: (String) -> Unit,
+    onRsvpToggle: (String, Boolean) -> Unit,
     isAlreadyRsvped: Boolean,
 ) {
     val uriHandler = LocalUriHandler.current
@@ -475,15 +481,24 @@ private fun MessageBubble(
                     )
                 }
                 message.event?.let { event ->
+                    val showRsvpAction = !event.isHostedByCurrentUser
                     EventCard(
                         event = event,
                         onOpenMaps = {
                             if (event.mapsUrl.isNotBlank()) uriHandler.openUri(event.mapsUrl)
                         },
                         onOpenEventChat = { onOpenEventChat(event) },
-                        actionLabel = if (isAlreadyRsvped) "RSVP'd" else "RSVP Yes",
-                        actionEnabled = !isAlreadyRsvped,
-                        onActionClick = { onRsvp(event.id) },
+                        actionLabel = if (showRsvpAction) {
+                            if (isAlreadyRsvped) "Remove RSVP" else "RSVP Yes"
+                        } else {
+                            null
+                        },
+                        actionEnabled = true,
+                        onActionClick = if (showRsvpAction) {
+                            { onRsvpToggle(event.id, !isAlreadyRsvped) }
+                        } else {
+                            null
+                        },
                     )
                 }
                 Text(
@@ -508,12 +523,12 @@ private fun Composer(
 ) {
     Surface(
         color = MaterialTheme.colorScheme.background,
-        modifier = modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
+        modifier = modifier
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .imePadding()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),

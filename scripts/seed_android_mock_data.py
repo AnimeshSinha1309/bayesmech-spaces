@@ -4,6 +4,8 @@ from app.db import ensure_indexes, db
 CURRENT_USER_ID = "user-animesh"
 CURRENT_USER_EMAIL = "animesh@example.com"
 CURRENT_USER_THREAD_ID = f"thread_main_{CURRENT_USER_ID}"
+NEW_USER_ID = "user-bhuvanesh"
+NEW_USER_THREAD_ID = f"thread_main_{NEW_USER_ID}"
 EVENT_ID = "evt-rooftop-acoustic-session"
 EVENT_THREAD_ID = f"thread_event_{EVENT_ID}"
 RUN_EVENT_ID_1 = "evt-cubbon-sunrise-run"
@@ -376,6 +378,56 @@ def main() -> None:
         "last_login_at": "2026-04-16T03:35:00Z",
     }
     upsert_user(current_user)
+
+    bhuvanesh_user = {
+        "_id": NEW_USER_ID,
+        "email": "bhuvanesh@example.com",
+        "password": None,
+        "auth_providers": ["username"],
+        "google_id": None,
+        "display_name": "Bhuvanesh",
+        "username": "bhuvanesh",
+        "avatar_url": None,
+        "account_status": "active",
+        "persona": {},
+        "connections": [],
+        "event_refs": {
+            "hosted_event_ids": [],
+            "joined_event_ids": [],
+            "attended_event_ids": [],
+        },
+        "main_thread_id": NEW_USER_THREAD_ID,
+        "last_login_at": "2026-04-16T03:36:00Z",
+    }
+    upsert_user(bhuvanesh_user)
+    upsert_chat_thread(
+        {
+            "_id": NEW_USER_THREAD_ID,
+            "thread_type": "dm_with_system",
+            "owner_user_id": NEW_USER_ID,
+            "event_id": None,
+            "participant_user_ids": [NEW_USER_ID],
+            "status": "active",
+            "created_at": "2026-04-16T03:36:00Z",
+            "updated_at": "2026-04-16T03:36:00Z",
+            "last_message_at": "2026-04-16T03:36:00Z",
+        }
+    )
+    upsert_chat_message(
+        {
+            "_id": "msg-bhuvanesh-1",
+            "thread_id": NEW_USER_THREAD_ID,
+            "thread_type": "dm_with_system",
+            "event_id": None,
+            "sender_type": "assistant",
+            "sender_user_id": None,
+            "message_type": "text",
+            "content_text": "Hi Bhuvanesh. Tell me what kind of plans, people, or places feel like you, and I will start shaping your profile through chat.",
+            "content_structured": None,
+            "created_at": "2026-04-16T03:36:00Z",
+            "edited_at": None,
+        }
+    )
 
     for attendee in build_attendees():
         upsert_user(attendee)

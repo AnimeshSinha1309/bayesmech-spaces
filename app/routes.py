@@ -23,6 +23,7 @@ from app.models import (
     UserGoogleAuth,
     UserPatch,
     UserSignIn,
+    UsernameSignIn,
 )
 from app.transcription import transcribe_audio_bytes
 from app.utils import dm_thread_id, prefixed_id, utc_now
@@ -119,7 +120,7 @@ def _assert_thread_participant(thread: dict, user_id: str) -> None:
 def _get_event_context(event_id: str) -> tuple[dict, dict | None, list[dict], set[str]]:
     event = _get_event_or_404(event_id)
     creator = db.users.find_one({"_id": event.get("creator_user_id")}) if event.get("creator_user_id") else None
-    memberships = list(db.event_memberships.find({"event_id": event_id}))
+    memberships = list(db.event_memberships.find({"event_id": event_id, "rsvp_status": "joined"}))
     attendee_ids = {membership["user_id"] for membership in memberships}
     attendees = list(db.users.find({"_id": {"$in": list(attendee_ids)}})) if attendee_ids else []
     return event, creator, attendees, attendee_ids
@@ -310,6 +311,81 @@ def signin(payload: UserSignIn) -> dict:
     db.users.update_one({"_id": user["_id"]}, {"$set": {"last_login_at": now}})
     user["last_login_at"] = now
     return user
+
+
+@router.post("/auth/username")
+def username_signin(payload: UsernameSignIn) -> dict:
+    normalized_username = (payload.username or "").strip().lower()
+    if not normalized_username:
+        raise HTTPException(status_code=400, detail="username is required")
+
+    user = db.users.find_one({"username": normalized_username})
+    now = utc_now()
+    if user:
+        db.users.update_one({"_id": user["_id"]}, {"$set": {"last_login_at": now}})
+        user["last_login_at"] = now
+        return user
+
+    display_name = " ".join(part.capitalize() for part in normalized_username.replace("-", " ").split()) or normalized_username
+    user_id = f"user-{normalized_username.replace(' ', '-')}"
+    document = {
+        "_id": user_id,
+        "email": f"{normalized_username}@example.com",
+        "password": None,
+        "auth_providers": ["username"],
+        "google_id": None,
+        "display_name": display_name,
+        "username": normalized_username,
+        "avatar_url": None,
+        "account_status": "active",
+        "persona": {},
+        "connections": [],
+        "event_refs": {
+            "hosted_event_ids": [],
+            "joined_event_ids": [],
+            "attended_event_ids": [],
+        },
+        "main_thread_id": f"thread_main_{user_id}",
+        "last_login_at": now,
+    }
+    db.users.update_one({"_id": user_id}, {"$set": document}, upsert=True)
+    db.chat_threads.update_one(
+        {"_id": document["main_thread_id"]},
+        {
+            "$setOnInsert": {
+                "_id": document["main_thread_id"],
+                "thread_type": "dm_with_system",
+                "owner_user_id": user_id,
+                "event_id": None,
+                "participant_user_ids": [user_id],
+                "status": "active",
+                "created_at": now,
+                "updated_at": now,
+                "last_message_at": now,
+            }
+        },
+        upsert=True,
+    )
+    db.chat_messages.update_one(
+        {"thread_id": document["main_thread_id"], "sender_type": "assistant"},
+        {
+            "$setOnInsert": {
+                "_id": prefixed_id("msg"),
+                "thread_id": document["main_thread_id"],
+                "thread_type": "dm_with_system",
+                "event_id": None,
+                "sender_type": "assistant",
+                "sender_user_id": None,
+                "message_type": "text",
+                "content_text": f"Hi {display_name}. Tell me what kind of plans, people, or places feel like you, and I will start shaping your profile through chat.",
+                "content_structured": None,
+                "created_at": now,
+                "edited_at": None,
+            }
+        },
+        upsert=True,
+    )
+    return document
 
 
 @router.post("/auth/google")
@@ -634,7 +710,11 @@ def join_event(event_id: str, payload: EventMembershipCreate) -> dict:
     )
     db.users.update_one(
         {"_id": payload.user_id},
-        {"$addToSet": {"event_refs.joined_event_ids": event_id}},
+        (
+            {"$addToSet": {"event_refs.joined_event_ids": event_id}}
+            if payload.rsvp_status == "joined"
+            else {"$pull": {"event_refs.joined_event_ids": event_id}}
+        ),
     )
     db.events.update_one(
         {"_id": event_id},
@@ -647,6 +727,16 @@ def join_event(event_id: str, payload: EventMembershipCreate) -> dict:
         db.events.update_one(
             {"_id": event_id},
             {"$inc": {"attendance.attendee_count": 1, "attendance.confirmed_count": 1}},
+        )
+    elif was_joined and payload.rsvp_status != "joined":
+        db.events.update_one(
+            {"_id": event_id},
+            {
+                "$inc": {
+                    "attendance.attendee_count": -1,
+                    "attendance.confirmed_count": -1,
+                }
+            },
         )
     db.chat_threads.update_one(
         {"_id": event["chat"]["thread_id"]},
@@ -668,7 +758,7 @@ def get_user_events(user_id: str) -> dict:
 
 @router.get("/events/{event_id}/attendees")
 def get_event_attendees(event_id: str) -> list[dict]:
-    memberships = list(db.event_memberships.find({"event_id": event_id}, {"_id": 0}))
+    memberships = list(db.event_memberships.find({"event_id": event_id, "rsvp_status": "joined"}, {"_id": 0}))
     user_ids = [membership["user_id"] for membership in memberships]
     users = {
         user["_id"]: user

@@ -11,7 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.runBlocking
 import spaces.bayesmech.com.data.AppRepositories
-import spaces.bayesmech.com.data.backend.BackendConfig
+import spaces.bayesmech.com.data.UserSessionStore
 import spaces.bayesmech.com.share.ShareIntentParser
 import spaces.bayesmech.com.ui.SpacesApp
 import spaces.bayesmech.com.ui.theme.SpacesTheme
@@ -19,6 +19,7 @@ import spaces.bayesmech.com.ui.theme.SpacesTheme
 class MainActivity : ComponentActivity() {
     private var openContentSignal by mutableIntStateOf(0)
     private var sharedFromLabel by mutableStateOf<String?>(null)
+    private val sessionStore by lazy { UserSessionStore(applicationContext) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,7 +58,8 @@ class MainActivity : ComponentActivity() {
 
         val currentUser = runCatching {
             runBlocking {
-                AppRepositories.backendRepository.getCurrentUser(BackendConfig.currentUserId)
+                val userId = sessionStore.getUserId() ?: return@runBlocking null
+                AppRepositories.backendRepository.getCurrentUser(userId)
             }
         }.getOrNull() ?: return
 
