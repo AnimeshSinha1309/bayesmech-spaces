@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import spaces.bayesmech.com.data.CurrentUser
 import spaces.bayesmech.com.data.InterestEntry
 import spaces.bayesmech.com.data.JourneyEntry
+import spaces.bayesmech.com.ui.components.AvatarImage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -212,7 +213,12 @@ private fun AvatarFallback(
                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center,
         ) {
-            if (currentUser.avatarUrl == null) {
+            if (currentUser.avatarUrl != null) {
+                AvatarImage(
+                    avatarUrl = currentUser.avatarUrl,
+                    fallbackLabel = currentUser.displayName,
+                )
+            } else {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp),

@@ -44,3 +44,30 @@ data class EventAttendee(
     val displayName: String,
     val avatarUrl: String? = null,
 )
+
+enum class SharedContentType {
+    Article,
+    Video,
+}
+
+data class SharedContentItem(
+    val id: String,
+    val type: SharedContentType,
+    val title: String,
+    val url: String? = null,
+    val previewText: String,
+    val sharedByUserId: String,
+    val sharedByName: String,
+    val sharedByAvatarUrl: String? = null,
+    val sharedAt: String,
+    val sourceAppLabel: String? = null,
+    val isVisibleToSharer: Boolean = true,
+)
+
+data class IncomingSharedContent(
+    val type: SharedContentType,
+    val title: String,
+    val url: String? = null,
+    val previewText: String,
+    val sourceAppLabel: String? = null,
+)

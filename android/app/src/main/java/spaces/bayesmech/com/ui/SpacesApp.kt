@@ -24,6 +24,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -36,21 +37,25 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.launch
-import spaces.bayesmech.com.data.mock.MockChatRepository
-import spaces.bayesmech.com.data.mock.MockCurrentUserRepository
+import spaces.bayesmech.com.data.mock.MockRepositories
 import spaces.bayesmech.com.ui.navigation.AppDestination
 import spaces.bayesmech.com.ui.screens.AiChatScreen
 import spaces.bayesmech.com.ui.screens.ChatScreen
+import spaces.bayesmech.com.ui.screens.ContentScreen
 import spaces.bayesmech.com.ui.screens.PlaceholderScreen
 import spaces.bayesmech.com.ui.screens.ProfileScreen
 
 @Composable
-fun SpacesApp() {
+fun SpacesApp(
+    openContentSignal: Int = 0,
+    sharedFromLabel: String? = null,
+) {
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
-    val chatRepository = remember { MockChatRepository() }
-    val currentUserRepository = remember { MockCurrentUserRepository() }
+    val chatRepository = remember { MockRepositories.chatRepository }
+    val currentUserRepository = remember { MockRepositories.currentUserRepository }
+    val sharedContentRepository = remember { MockRepositories.sharedContentRepository }
 
     fun navigateTo(destination: AppDestination) {
         navController.navigate(destination.route) {
@@ -59,6 +64,12 @@ fun SpacesApp() {
             }
             launchSingleTop = true
             restoreState = true
+        }
+    }
+
+    LaunchedEffect(openContentSignal) {
+        if (openContentSignal > 0) {
+            navigateTo(AppDestination.Content)
         }
     }
 
@@ -108,10 +119,11 @@ fun SpacesApp() {
                     )
                 }
                 composable(AppDestination.Content.route) {
-                    PlaceholderScreen(
-                        title = "Content",
-                        description = "This page is intentionally empty for now and will become the home for future content flows.",
-                        onBack = { navController.popBackStack() },
+                    ContentScreen(
+                        sharedContent = sharedContentRepository.getSharedContent(),
+                        currentUser = currentUserRepository.getCurrentUser(),
+                        drawerState = drawerState,
+                        latestSourceAppLabel = sharedFromLabel,
                     )
                 }
                 composable(AppDestination.Profile.route) {
