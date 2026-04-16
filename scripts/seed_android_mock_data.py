@@ -50,6 +50,11 @@ def build_attendees() -> list[dict]:
     attendees = []
     for index, name in enumerate(attendee_names, start=1):
         user_id = f"usr-attendee-{index:02d}"
+        avatar_url = {
+            "Nikhil": "avatar_nikhil",
+            "Rhea": "avatar_rhea",
+            "Sana": "avatar_sana",
+        }.get(name)
         attendees.append(
             {
                 "_id": user_id,
@@ -59,7 +64,7 @@ def build_attendees() -> list[dict]:
                 "google_id": None,
                 "display_name": name,
                 "username": name.lower(),
-                "avatar_url": None,
+                "avatar_url": avatar_url,
                 "account_status": "active",
                 "persona": {
                     "seeded_for": "android_demo",
@@ -88,7 +93,7 @@ def main() -> None:
         "google_id": None,
         "display_name": "Animesh",
         "username": "animesh",
-        "avatar_url": None,
+        "avatar_url": "avatar_animesh",
         "account_status": "active",
         "persona": {
             "mobile_profile": {
@@ -353,9 +358,9 @@ def main() -> None:
                         "and enough room to actually talk between songs."
                     ),
                     "attendees": [
-                        {"display_name": "Nikhil", "avatar_url": None},
-                        {"display_name": "Rhea", "avatar_url": None},
-                        {"display_name": "Sana", "avatar_url": None},
+                        {"display_name": "Nikhil", "avatar_url": "avatar_nikhil"},
+                        {"display_name": "Rhea", "avatar_url": "avatar_rhea"},
+                        {"display_name": "Sana", "avatar_url": "avatar_sana"},
                     ],
                     "attendee_count": 16,
                 },
