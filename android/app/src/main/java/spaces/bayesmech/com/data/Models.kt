@@ -63,12 +63,15 @@ data class SharedContentItem(
     val title: String,
     val url: String? = null,
     val previewText: String,
+    val topicTags: List<String> = emptyList(),
     val sharedByUserId: String,
     val sharedByName: String,
     val sharedByAvatarUrl: String? = null,
     val sharedAt: String,
     val sourceAppLabel: String? = null,
     val isVisibleToSharer: Boolean = true,
+    val likedByUserIds: Set<String> = emptySet(),
+    val interestMatchLabel: String? = null,
 )
 
 data class IncomingSharedContent(

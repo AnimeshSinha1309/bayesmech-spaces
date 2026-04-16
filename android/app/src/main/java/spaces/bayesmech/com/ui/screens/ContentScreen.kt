@@ -1,7 +1,9 @@
 package spaces.bayesmech.com.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,12 +14,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Article
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -51,6 +56,7 @@ fun ContentScreen(
     currentUser: CurrentUser,
     drawerState: DrawerState,
     latestSourceAppLabel: String?,
+    onToggleLike: (String) -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
 
@@ -100,6 +106,7 @@ fun ContentScreen(
                 SharedContentCard(
                     item = item,
                     currentUser = currentUser,
+                    onToggleLike = onToggleLike,
                 )
             }
         }
@@ -130,15 +137,15 @@ private fun ContentFeedHeader(
             Text(
                 text = buildString {
                     append("Anything you share here is shown to other users in the shared feed. ")
-                    append("For now, your own posts also stay visible to you.")
+                    append("Your own shares are excluded from your feed, repeated links are collapsed, and cards are ranked by your interests.")
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
                 text = latestSourceAppLabel?.let {
-                    "Latest import came from $it as ${currentUser.displayName}."
-                } ?: "Use the system share sheet to send something here as ${currentUser.displayName}.",
+                    "Latest import came from $it as ${currentUser.displayName}, but it will not appear in your own feed."
+                } ?: "Use the system share sheet to send something here as ${currentUser.displayName}. Your own shares stay hidden from you.",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -147,9 +154,11 @@ private fun ContentFeedHeader(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun SharedContentCard(
     item: SharedContentItem,
     currentUser: CurrentUser,
+    onToggleLike: (String) -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
     val icon = when (item.type) {
@@ -160,12 +169,16 @@ private fun SharedContentCard(
         SharedContentType.Article -> "Article"
         SharedContentType.Video -> "Video"
     }
-    val isFromCurrentUser = item.sharedByUserId == currentUser.id
-
+    val isLiked = currentUser.id in item.likedByUserIds
+    val likeCount = item.likedByUserIds.size
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp)
+            .combinedClickable(
+                onClick = {},
+                onDoubleClick = { onToggleLike(item.id) },
+            ),
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
     ) {
@@ -224,6 +237,20 @@ private fun SharedContentCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
+            item.interestMatchLabel?.let { matchLabel ->
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                ) {
+                    Text(
+                        text = matchLabel,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+
             item.url?.let { url ->
                 Row(
                     modifier = Modifier.clickable { uriHandler.openUri(url) },
@@ -246,7 +273,7 @@ private fun SharedContentCard(
             Text(
                 text = buildString {
                     append("Shared by ")
-                    append(if (isFromCurrentUser) "you" else item.sharedByName)
+                    append(item.sharedByName)
                     append(" • ")
                     append(item.sharedAt)
                     item.sourceAppLabel?.let {
@@ -258,12 +285,48 @@ private fun SharedContentCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .clickable { onToggleLike(item.id) },
+                    shape = RoundedCornerShape(999.dp),
+                    color = if (isLiked) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                            contentDescription = null,
+                            tint = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = if (likeCount == 0) "Like" else likeCount.toString(),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Double tap to heart this post.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(180.dp),
+                )
+            }
+
             Text(
-                text = if (isFromCurrentUser && item.isVisibleToSharer) {
-                    "Visible to other users and to you for now."
-                } else {
-                    "Visible in the shared community feed."
-                },
+                text = "Visible in the shared community feed.",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )

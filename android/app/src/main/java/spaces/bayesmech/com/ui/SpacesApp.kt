@@ -176,10 +176,13 @@ fun SpacesApp(
                 }
                 composable(AppDestination.Content.route) {
                     ContentScreen(
-                        sharedContent = sharedContentRepository.getSharedContent(),
+                        sharedContent = sharedContentRepository.getSharedContent(resolvedCurrentUser),
                         currentUser = resolvedCurrentUser,
                         drawerState = drawerState,
                         latestSourceAppLabel = sharedFromLabel,
+                        onToggleLike = { contentId ->
+                            sharedContentRepository.toggleLike(contentId, resolvedCurrentUser.id)
+                        },
                     )
                 }
                 composable(AppDestination.Profile.route) {

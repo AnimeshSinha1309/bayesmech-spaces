@@ -22,6 +22,7 @@ interface CurrentUserRepository {
 }
 
 interface SharedContentRepository {
-    fun getSharedContent(): SnapshotStateList<SharedContentItem>
+    fun getSharedContent(currentUser: CurrentUser): SnapshotStateList<SharedContentItem>
     fun addSharedContent(content: IncomingSharedContent, sharedBy: CurrentUser)
+    fun toggleLike(contentId: String, currentUserId: String)
 }

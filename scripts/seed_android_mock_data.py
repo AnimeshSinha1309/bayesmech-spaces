@@ -6,6 +6,23 @@ CURRENT_USER_EMAIL = "animesh@example.com"
 CURRENT_USER_THREAD_ID = f"thread_main_{CURRENT_USER_ID}"
 EVENT_ID = "evt-rooftop-acoustic-session"
 EVENT_THREAD_ID = f"thread_event_{EVENT_ID}"
+RUN_EVENT_ID_1 = "evt-cubbon-sunrise-run"
+RUN_EVENT_ID_2 = "evt-ulsoor-social-run"
+SNOOKER_EVENT_ID = "evt-sjr-vogue-snooker-night"
+CHESS_EVENT_ID_1 = "evt-chess-cafe-opening"
+CHESS_EVENT_ID_2 = "evt-endgame-study-circle"
+CHESS_EVENT_ID_3 = "evt-sunday-speed-chess"
+WRITERS_EVENT_ID = "evt-brick-over-bangalore-writers-room"
+ALL_HOSTED_EVENT_IDS = [
+    EVENT_ID,
+    RUN_EVENT_ID_1,
+    RUN_EVENT_ID_2,
+    SNOOKER_EVENT_ID,
+    CHESS_EVENT_ID_1,
+    CHESS_EVENT_ID_2,
+    CHESS_EVENT_ID_3,
+    WRITERS_EVENT_ID,
+]
 
 
 def upsert_user(document: dict) -> None:
@@ -72,7 +89,7 @@ def build_attendees() -> list[dict]:
                 "connections": [],
                 "event_refs": {
                     "hosted_event_ids": [],
-                    "joined_event_ids": [EVENT_ID],
+                    "joined_event_ids": [EVENT_ID, RUN_EVENT_ID_1, CHESS_EVENT_ID_1],
                     "attended_event_ids": [],
                 },
                 "main_thread_id": f"thread_main_{user_id}",
@@ -178,8 +195,8 @@ def main() -> None:
         },
         "connections": [],
         "event_refs": {
-            "hosted_event_ids": [EVENT_ID],
-            "joined_event_ids": [EVENT_ID],
+            "hosted_event_ids": ALL_HOSTED_EVENT_IDS,
+            "joined_event_ids": ALL_HOSTED_EVENT_IDS,
             "attended_event_ids": [],
         },
         "main_thread_id": CURRENT_USER_THREAD_ID,
@@ -277,6 +294,255 @@ def main() -> None:
         }
     )
 
+    additional_events = [
+        {
+            "_id": RUN_EVENT_ID_1,
+            "thread_id": f"thread_event_{RUN_EVENT_ID_1}",
+            "title": "Cubbon Sunrise Run",
+            "description": (
+                "A steady 6K loop through Cubbon Park with a social pace, post-run coffee, "
+                "and enough room for people who want movement without race-day intensity."
+            ),
+            "category_tags": ["running", "fitness", "outdoors", "coffee"],
+            "timing": {
+                "start_time": "2026-04-17T00:30:00Z",
+                "timezone": "Asia/Kolkata",
+                "label": "Tomorrow, 6:00 AM",
+            },
+            "location": {
+                "name": "Cubbon Park Main Gate",
+                "maps_url": "https://maps.google.com/?q=Cubbon+Park+Main+Gate+Bengaluru",
+            },
+            "capacity": {"max_attendees": 18},
+            "attendance": {
+                "attendee_count": 5,
+                "confirmed_count": 5,
+                "maybe_count": 0,
+                "declined_count": 0,
+            },
+            "participant_user_ids": [CURRENT_USER_ID, "usr-attendee-01", "usr-attendee-04", "usr-attendee-08", "usr-attendee-12"],
+            "created_at": "2026-04-16T03:40:00Z",
+            "updated_at": "2026-04-16T03:50:00Z",
+        },
+        {
+            "_id": RUN_EVENT_ID_2,
+            "thread_id": f"thread_event_{RUN_EVENT_ID_2}",
+            "title": "Ulsoor Lake Tempo Run",
+            "description": (
+                "An 8K evening run around Ulsoor Lake for people who want a bit more pace, "
+                "followed by a cool-down walk and quick catch-up."
+            ),
+            "category_tags": ["running", "fitness", "outdoors", "social"],
+            "timing": {
+                "start_time": "2026-04-18T12:45:00Z",
+                "timezone": "Asia/Kolkata",
+                "label": "Saturday, 6:15 PM",
+            },
+            "location": {
+                "name": "Ulsoor Lake Boat Club Entrance",
+                "maps_url": "https://maps.google.com/?q=Ulsoor+Lake+Boat+Club+Entrance+Bengaluru",
+            },
+            "capacity": {"max_attendees": 14},
+            "attendance": {
+                "attendee_count": 4,
+                "confirmed_count": 4,
+                "maybe_count": 0,
+                "declined_count": 0,
+            },
+            "participant_user_ids": [CURRENT_USER_ID, "usr-attendee-06", "usr-attendee-10", "usr-attendee-15"],
+            "created_at": "2026-04-16T03:42:00Z",
+            "updated_at": "2026-04-16T03:52:00Z",
+        },
+        {
+            "_id": SNOOKER_EVENT_ID,
+            "thread_id": f"thread_event_{SNOOKER_EVENT_ID}",
+            "title": "Snooker Night at SJR Vogue Apartments",
+            "description": (
+                "A low-key snooker session in the clubhouse at SJR Vogue Apartments. "
+                "Good for people who want a few frames, light conversation, and a close-to-home plan."
+            ),
+            "category_tags": ["snooker", "games", "social", "indoor"],
+            "timing": {
+                "start_time": "2026-04-16T14:00:00Z",
+                "timezone": "Asia/Kolkata",
+                "label": "Today, 7:30 PM",
+            },
+            "location": {
+                "name": "SJR Vogue Apartments Clubhouse",
+                "maps_url": "https://maps.google.com/?q=SJR+Vogue+Apartments+Bengaluru",
+            },
+            "capacity": {"max_attendees": 8},
+            "attendance": {
+                "attendee_count": 4,
+                "confirmed_count": 4,
+                "maybe_count": 0,
+                "declined_count": 0,
+            },
+            "participant_user_ids": [CURRENT_USER_ID, "usr-attendee-02", "usr-attendee-09", "usr-attendee-14"],
+            "created_at": "2026-04-16T06:10:00Z",
+            "updated_at": "2026-04-16T06:25:00Z",
+        },
+        {
+            "_id": CHESS_EVENT_ID_1,
+            "thread_id": f"thread_event_{CHESS_EVENT_ID_1}",
+            "title": "Chess and Coffee Opening Prep",
+            "description": (
+                "Bring a board or borrow one for casual rapid games, opening experiments, "
+                "and coffee-fueled discussion without tournament pressure."
+            ),
+            "category_tags": ["chess", "games", "coffee", "strategy"],
+            "timing": {
+                "start_time": "2026-04-17T13:00:00Z",
+                "timezone": "Asia/Kolkata",
+                "label": "Tomorrow, 6:30 PM",
+            },
+            "location": {
+                "name": "Third Wave Coffee, Indiranagar",
+                "maps_url": "https://maps.google.com/?q=Third+Wave+Coffee+Indiranagar+Bengaluru",
+            },
+            "capacity": {"max_attendees": 12},
+            "attendance": {
+                "attendee_count": 5,
+                "confirmed_count": 5,
+                "maybe_count": 0,
+                "declined_count": 0,
+            },
+            "participant_user_ids": [CURRENT_USER_ID, "usr-attendee-03", "usr-attendee-05", "usr-attendee-11", "usr-attendee-16"],
+            "created_at": "2026-04-16T03:45:00Z",
+            "updated_at": "2026-04-16T03:55:00Z",
+        },
+        {
+            "_id": CHESS_EVENT_ID_2,
+            "thread_id": f"thread_event_{CHESS_EVENT_ID_2}",
+            "title": "Endgame Study Circle",
+            "description": (
+                "A small chess meetup focused on practical endgames, annotated positions, "
+                "and slow discussion for people who enjoy learning as much as playing."
+            ),
+            "category_tags": ["chess", "learning", "strategy", "indoor"],
+            "timing": {
+                "start_time": "2026-04-19T05:30:00Z",
+                "timezone": "Asia/Kolkata",
+                "label": "Sunday, 11:00 AM",
+            },
+            "location": {
+                "name": "Atta Galatta, Indiranagar",
+                "maps_url": "https://maps.google.com/?q=Atta+Galatta+Indiranagar+Bengaluru",
+            },
+            "capacity": {"max_attendees": 10},
+            "attendance": {
+                "attendee_count": 4,
+                "confirmed_count": 4,
+                "maybe_count": 0,
+                "declined_count": 0,
+            },
+            "participant_user_ids": [CURRENT_USER_ID, "usr-attendee-01", "usr-attendee-07", "usr-attendee-13"],
+            "created_at": "2026-04-16T03:47:00Z",
+            "updated_at": "2026-04-16T03:57:00Z",
+        },
+        {
+            "_id": CHESS_EVENT_ID_3,
+            "thread_id": f"thread_event_{CHESS_EVENT_ID_3}",
+            "title": "Sunday Speed Chess Boards",
+            "description": (
+                "Fast 10-minute games, quick pairings, and a friendly ladder for anyone who wants "
+                "a sharper, more playful chess evening."
+            ),
+            "category_tags": ["chess", "games", "social", "competitive"],
+            "timing": {
+                "start_time": "2026-04-20T13:30:00Z",
+                "timezone": "Asia/Kolkata",
+                "label": "Monday, 7:00 PM",
+            },
+            "location": {
+                "name": "Champaca Bookstore Courtyard",
+                "maps_url": "https://maps.google.com/?q=Champaca+Bookstore+Bengaluru",
+            },
+            "capacity": {"max_attendees": 16},
+            "attendance": {
+                "attendee_count": 6,
+                "confirmed_count": 6,
+                "maybe_count": 0,
+                "declined_count": 0,
+            },
+            "participant_user_ids": [CURRENT_USER_ID, "usr-attendee-04", "usr-attendee-06", "usr-attendee-08", "usr-attendee-12", "usr-attendee-15"],
+            "created_at": "2026-04-16T03:49:00Z",
+            "updated_at": "2026-04-16T03:59:00Z",
+        },
+        {
+            "_id": WRITERS_EVENT_ID,
+            "thread_id": f"thread_event_{WRITERS_EVENT_ID}",
+            "title": "Writers Meetup at Brick Over Bangalore",
+            "description": (
+                "A writers room for essays, notes, fiction fragments, and works-in-progress. "
+                "Read a page, listen well, and trade thoughtful feedback over coffee."
+            ),
+            "category_tags": ["writing", "books", "creative", "meetup"],
+            "timing": {
+                "start_time": "2026-04-19T10:30:00Z",
+                "timezone": "Asia/Kolkata",
+                "label": "Sunday, 4:00 PM",
+            },
+            "location": {
+                "name": "Brick Over Bangalore",
+                "maps_url": "https://maps.google.com/?q=Brick+Over+Bangalore",
+            },
+            "capacity": {"max_attendees": 14},
+            "attendance": {
+                "attendee_count": 5,
+                "confirmed_count": 5,
+                "maybe_count": 0,
+                "declined_count": 0,
+            },
+            "participant_user_ids": [CURRENT_USER_ID, "usr-attendee-02", "usr-attendee-05", "usr-attendee-11", "usr-attendee-13"],
+            "created_at": "2026-04-16T03:51:00Z",
+            "updated_at": "2026-04-16T04:01:00Z",
+        },
+    ]
+
+    for event in additional_events:
+        upsert_event(
+            {
+                "_id": event["_id"],
+                "creator_user_id": CURRENT_USER_ID,
+                "title": event["title"],
+                "description": event["description"],
+                "category_tags": event["category_tags"],
+                "status": "published",
+                "visibility_type": "targeted",
+                "created_via": "chat",
+                "timing": event["timing"],
+                "location": event["location"],
+                "capacity": event["capacity"],
+                "attendance": event["attendance"],
+                "routing": {},
+                "chat": {
+                    "thread_id": event["thread_id"],
+                    "status": "active",
+                    "expires_at": None,
+                    "participant_user_ids": event["participant_user_ids"],
+                },
+                "source": {
+                    "seeded_from": "android_mock_data",
+                },
+                "created_at": event["created_at"],
+                "updated_at": event["updated_at"],
+            }
+        )
+        upsert_chat_thread(
+            {
+                "_id": event["thread_id"],
+                "thread_type": "event_chat",
+                "owner_user_id": None,
+                "event_id": event["_id"],
+                "participant_user_ids": event["participant_user_ids"],
+                "status": "active",
+                "created_at": event["created_at"],
+                "updated_at": event["updated_at"],
+                "last_message_at": event["updated_at"],
+            }
+        )
+
     upsert_event_membership(
         {
             "_id": "mem-current-user-event",
@@ -305,6 +571,22 @@ def main() -> None:
                 "left_at": None,
             }
         )
+
+    for event in additional_events:
+        for participant_user_id in event["participant_user_ids"]:
+            upsert_event_membership(
+                {
+                    "_id": f"mem-{event['_id']}-{participant_user_id}",
+                    "event_id": event["_id"],
+                    "user_id": participant_user_id,
+                    "role": "creator" if participant_user_id == CURRENT_USER_ID else "attendee",
+                    "rsvp_status": "joined",
+                    "discovery_source": "direct_chat" if participant_user_id == CURRENT_USER_ID else "broadcast",
+                    "joined_at": event["created_at"],
+                    "attended_at": None,
+                    "left_at": None,
+                }
+            )
 
     upsert_chat_message(
         {
