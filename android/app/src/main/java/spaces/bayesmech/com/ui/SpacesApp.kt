@@ -44,11 +44,15 @@ import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.launch
 import spaces.bayesmech.com.data.ProfileAiApi
 import spaces.bayesmech.com.data.AppRepositories
+import spaces.bayesmech.com.data.ChatEvent
+import spaces.bayesmech.com.data.ConversationThread
 import spaces.bayesmech.com.data.CurrentUser
 import spaces.bayesmech.com.data.backend.BackendConfig
 import spaces.bayesmech.com.ui.navigation.AppDestination
 import spaces.bayesmech.com.ui.screens.AiChatScreen
 import spaces.bayesmech.com.ui.screens.ChatScreen
+import spaces.bayesmech.com.ui.screens.CommunityScreen
+import spaces.bayesmech.com.ui.screens.ConversationScreen
 import spaces.bayesmech.com.ui.screens.ContentScreen
 import spaces.bayesmech.com.ui.screens.PlaceholderScreen
 import spaces.bayesmech.com.ui.screens.ProfileScreen
@@ -67,6 +71,7 @@ fun SpacesApp(
     val profileAiApi = remember { ProfileAiApi() }
     var currentUser by remember { mutableStateOf<CurrentUser?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
+    var activeConversation by remember { mutableStateOf<ConversationThread?>(null) }
 
     LaunchedEffect(Unit) {
         runCatching {
@@ -157,30 +162,60 @@ fun SpacesApp(
                         chatRepository = repository,
                         currentUser = resolvedCurrentUser,
                         drawerState = drawerState,
-                        onOpenEventChat = { navigateTo(AppDestination.EventChat) },
+                        onOpenEventChat = { event: ChatEvent ->
+                            drawerScope.launch {
+                                runCatching {
+                                    repository.getEventChat(event.id, resolvedCurrentUser.id)
+                                }.onSuccess { thread ->
+                                    activeConversation = thread
+                                    navigateTo(AppDestination.Conversation)
+                                }.onFailure { error ->
+                                    Log.e("SpacesApp", "Failed to open event chat", error)
+                                }
+                            }
+                        },
                         onProfileClick = { navigateTo(AppDestination.Profile) },
                     )
                 }
                 composable(AppDestination.Community.route) {
-                    PlaceholderScreen(
-                        title = "Community",
-                        description = "See the people you've crossed paths with through events and shared context.",
-                        onBack = { navController.popBackStack() },
+                    CommunityScreen(
+                        communityRepository = repository,
+                        conversationRepository = repository,
+                        currentUser = resolvedCurrentUser,
+                        drawerState = drawerState,
+                        onOpenConversation = { thread ->
+                            activeConversation = thread
+                            navigateTo(AppDestination.Conversation)
+                        },
                     )
                 }
                 composable(AppDestination.Signups.route) {
                     SignupsScreen(
                         chatRepository = repository,
                         currentUser = resolvedCurrentUser,
-                        onOpenEventChat = { navigateTo(AppDestination.EventChat) },
+                        onOpenEventChat = { event ->
+                            drawerScope.launch {
+                                runCatching {
+                                    repository.getEventChat(event.id, resolvedCurrentUser.id)
+                                }.onSuccess { thread ->
+                                    activeConversation = thread
+                                    navigateTo(AppDestination.Conversation)
+                                }.onFailure { error ->
+                                    Log.e("SpacesApp", "Failed to open signup event chat", error)
+                                }
+                            }
+                        },
                     )
                 }
                 composable(AppDestination.Content.route) {
                     ContentScreen(
-                        sharedContent = sharedContentRepository.getSharedContent(),
+                        sharedContent = sharedContentRepository.getSharedContent(resolvedCurrentUser),
                         currentUser = resolvedCurrentUser,
                         drawerState = drawerState,
                         latestSourceAppLabel = sharedFromLabel,
+                        onToggleLike = { contentId ->
+                            sharedContentRepository.toggleLike(contentId, resolvedCurrentUser.id)
+                        },
                     )
                 }
                 composable(AppDestination.Profile.route) {
@@ -200,10 +235,17 @@ fun SpacesApp(
                         onBack = { navController.popBackStack() },
                     )
                 }
-                composable(AppDestination.EventChat.route) {
-                    PlaceholderScreen(
-                        title = "Event Chat",
-                        description = "This will become the event-specific conversation space for attendees. It is intentionally empty for now.",
+                composable(AppDestination.Conversation.route) {
+                    activeConversation?.let { thread ->
+                        ConversationScreen(
+                            conversationRepository = repository,
+                            currentUser = resolvedCurrentUser,
+                            thread = thread,
+                            onBack = { navController.popBackStack() },
+                        )
+                    } ?: PlaceholderScreen(
+                        title = "Conversation",
+                        description = "Open a community match or event chat first.",
                         onBack = { navController.popBackStack() },
                     )
                 }

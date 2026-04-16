@@ -36,7 +36,7 @@ import spaces.bayesmech.com.ui.components.EventCard
 fun SignupsScreen(
     chatRepository: ChatRepository,
     currentUser: CurrentUser,
-    onOpenEventChat: () -> Unit,
+    onOpenEventChat: (ChatEvent) -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
     var events by remember { mutableStateOf<List<ChatEvent>>(emptyList()) }
@@ -122,7 +122,7 @@ fun SignupsScreen(
                             EventCard(
                                 event = event,
                                 onOpenMaps = { if (event.mapsUrl.isNotBlank()) uriHandler.openUri(event.mapsUrl) },
-                                onOpenEventChat = onOpenEventChat,
+                                onOpenEventChat = { onOpenEventChat(event) },
                             )
                         }
                     }

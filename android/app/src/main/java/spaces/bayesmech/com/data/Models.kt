@@ -56,6 +56,36 @@ data class EventAttendee(
     val avatarUrl: String? = null,
 )
 
+data class CommunityCandidate(
+    val userId: String,
+    val displayName: String,
+    val username: String? = null,
+    val avatarUrl: String? = null,
+    val headline: String,
+    val score: Int,
+    val reasoning: String,
+    val whatMatches: List<String>,
+    val sharedEventCount: Int = 0,
+)
+
+data class ThreadParticipant(
+    val userId: String,
+    val displayName: String,
+    val username: String? = null,
+    val avatarUrl: String? = null,
+)
+
+data class ConversationThread(
+    val threadId: String,
+    val threadType: String,
+    val eventId: String? = null,
+    val title: String,
+    val subtitle: String? = null,
+    val participantUserIds: List<String>,
+    val participants: List<ThreadParticipant>,
+    val messages: List<ChatMessage>,
+)
+
 enum class SharedContentType {
     Article,
     Video,
@@ -67,12 +97,15 @@ data class SharedContentItem(
     val title: String,
     val url: String? = null,
     val previewText: String,
+    val topicTags: List<String> = emptyList(),
     val sharedByUserId: String,
     val sharedByName: String,
     val sharedByAvatarUrl: String? = null,
     val sharedAt: String,
     val sourceAppLabel: String? = null,
     val isVisibleToSharer: Boolean = true,
+    val likedByUserIds: Set<String> = emptySet(),
+    val interestMatchLabel: String? = null,
 )
 
 data class IncomingSharedContent(

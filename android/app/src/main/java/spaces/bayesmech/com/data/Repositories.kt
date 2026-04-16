@@ -33,9 +33,37 @@ interface CurrentUserRepository {
     suspend fun getCurrentUser(userId: String): CurrentUser
 }
 
+interface CommunityRepository {
+    suspend fun getCommunity(userId: String): List<CommunityCandidate>
+}
+
+interface ConversationRepository {
+    suspend fun openDirectMessage(
+        userId: String,
+        otherUserId: String,
+    ): ConversationThread
+
+    suspend fun getThread(
+        threadId: String,
+        viewerUserId: String,
+    ): ConversationThread
+
+    suspend fun getEventChat(
+        eventId: String,
+        viewerUserId: String,
+    ): ConversationThread
+
+    suspend fun sendThreadMessage(
+        threadId: String,
+        senderUserId: String,
+        body: String,
+    ): ChatMessage
+}
+
 interface SharedContentRepository {
-    fun getSharedContent(): SnapshotStateList<SharedContentItem>
+    fun getSharedContent(currentUser: CurrentUser): SnapshotStateList<SharedContentItem>
     fun addSharedContent(content: IncomingSharedContent, sharedBy: CurrentUser)
+    fun toggleLike(contentId: String, currentUserId: String)
 }
 
 data class EventDraft(

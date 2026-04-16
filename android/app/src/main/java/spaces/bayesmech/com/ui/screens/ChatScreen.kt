@@ -83,6 +83,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import spaces.bayesmech.com.audio.VoiceNoteRecorder
+import spaces.bayesmech.com.data.ChatEvent
 import spaces.bayesmech.com.data.ChatMessage
 import spaces.bayesmech.com.data.ChatRepository
 import spaces.bayesmech.com.data.CurrentUser
@@ -105,7 +106,7 @@ fun ChatScreen(
     chatRepository: ChatRepository,
     currentUser: CurrentUser,
     drawerState: DrawerState,
-    onOpenEventChat: () -> Unit,
+    onOpenEventChat: (ChatEvent) -> Unit,
     onProfileClick: () -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -433,9 +434,9 @@ fun ChatScreen(
 @Composable
 private fun MessageBubble(
     message: ChatMessage,
-    isAlreadyRsvped: Boolean,
-    onOpenEventChat: () -> Unit,
+    onOpenEventChat: (ChatEvent) -> Unit,
     onRsvp: (String) -> Unit,
+    isAlreadyRsvped: Boolean,
 ) {
     val uriHandler = LocalUriHandler.current
 
@@ -479,7 +480,7 @@ private fun MessageBubble(
                         onOpenMaps = {
                             if (event.mapsUrl.isNotBlank()) uriHandler.openUri(event.mapsUrl)
                         },
-                        onOpenEventChat = onOpenEventChat,
+                        onOpenEventChat = { onOpenEventChat(event) },
                         actionLabel = if (isAlreadyRsvped) "RSVP'd" else "RSVP Yes",
                         actionEnabled = !isAlreadyRsvped,
                         onActionClick = { onRsvp(event.id) },
