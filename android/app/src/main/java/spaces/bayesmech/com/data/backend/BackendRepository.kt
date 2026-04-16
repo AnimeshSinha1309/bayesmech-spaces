@@ -151,7 +151,7 @@ class BackendRepository(
                 ?.toStringList()
                 ?.distinct()
                 ?: emptyList()
-            val signupEventIds = (hostedEventIds + joinedEventIds).distinct()
+            val signupEventIds = (joinedEventIds + hostedEventIds).distinct()
 
             signupEventIds.mapNotNull { eventId ->
                 val eventRequest = Request.Builder()

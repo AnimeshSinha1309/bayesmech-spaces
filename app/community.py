@@ -6,7 +6,6 @@ from openai import APIError, OpenAI, RateLimitError
 
 from app.config import settings
 from app.db import db
-from app.matching import score_profiles
 from app.utils import utc_now
 
 
@@ -120,10 +119,10 @@ def rank_community_candidates(current_user: dict[str, Any], candidate_users: lis
         }
 
     shortlist = _embedding_shortlist(current_user, candidate_users, limit=limit)
-    rerank_pool = shortlist[: min(max(limit, 4), 6)]
     reranked = []
-    for candidate, embedding_similarity in rerank_pool:
-        score = score_profiles(current_user, candidate)
+    for candidate, embedding_similarity in shortlist[: max(1, min(limit, 20))]:
+        shared_event_ids = _shared_event_ids(current_user, candidate)
+        shared_event_count = len(shared_event_ids)
         reranked.append(
             {
                 "user_id": candidate["_id"],
@@ -131,29 +130,22 @@ def rank_community_candidates(current_user: dict[str, Any], candidate_users: lis
                 "username": candidate.get("username"),
                 "avatar_url": candidate.get("avatar_url"),
                 "headline": ((candidate.get("persona") or {}).get("mobile_profile") or {}).get("headline"),
-                "score": score["score"],
+                "score": embedding_score(embedding_similarity, shared_event_count),
                 "embedding_similarity": embedding_similarity,
-                "reasoning": score["reasoning"],
-                "what_matches": score["what_matches"],
-                "what_does_not_match": score["what_does_not_match"],
-                "shared_event_count": _shared_event_count(current_user, candidate),
-                "shared_event_ids": _shared_event_ids(current_user, candidate),
+                "reasoning": build_embedding_reasoning(current_user, candidate, embedding_similarity, shared_event_count),
+                "what_matches": build_embedding_matches(current_user, candidate),
+                "what_does_not_match": [],
+                "shared_event_count": shared_event_count,
+                "shared_event_ids": shared_event_ids,
             }
         )
 
-    reranked.sort(
-        key=lambda item: (
-            item["score"],
-            item["embedding_similarity"],
-            item["shared_event_count"],
-        ),
-        reverse=True,
-    )
+    reranked.sort(key=lambda item: (item["embedding_similarity"], item["shared_event_count"]), reverse=True)
     return {
         "user_id": current_user["_id"],
         "evaluated_candidates": len(candidate_users),
         "shortlisted_with_embeddings": len(shortlist),
-        "reranked_candidates": len(rerank_pool),
+        "reranked_candidates": 0,
         "results": reranked[: max(1, min(limit, 20))],
     }
 
@@ -260,6 +252,45 @@ def cosine_similarity(vector_a: list[float], vector_b: list[float]) -> float:
     if not magnitude_a or not magnitude_b:
         return 0.0
     return numerator / (magnitude_a * magnitude_b)
+
+
+def embedding_score(similarity: float, shared_event_count: int) -> int:
+    base_score = int(round(max(0.0, min(1.0, similarity)) * 100))
+    bonus = min(shared_event_count * 3, 9)
+    return max(0, min(100, base_score + bonus))
+
+
+def build_embedding_reasoning(
+    current_user: dict[str, Any],
+    candidate: dict[str, Any],
+    similarity: float,
+    shared_event_count: int,
+) -> str:
+    current_tags = set(((current_user.get("persona") or {}).get("profile_dict") or {}).get("interest_tags", []))
+    candidate_tags = set(((candidate.get("persona") or {}).get("profile_dict") or {}).get("interest_tags", []))
+    overlap = sorted(current_tags & candidate_tags)
+    overlap_text = ", ".join(overlap[:3]) if overlap else "nearby interests and profile language"
+    shared_events_text = (
+        f" You also overlap on {shared_event_count} joined events."
+        if shared_event_count > 0
+        else ""
+    )
+    return (
+        f"Ranked from profile embedding similarity ({similarity:.2f}) with overlap around {overlap_text}."
+        f"{shared_events_text}"
+    )
+
+
+def build_embedding_matches(current_user: dict[str, Any], candidate: dict[str, Any]) -> list[str]:
+    current_tags = set(((current_user.get("persona") or {}).get("profile_dict") or {}).get("interest_tags", []))
+    candidate_tags = set(((candidate.get("persona") or {}).get("profile_dict") or {}).get("interest_tags", []))
+    shared_tags = sorted(current_tags & candidate_tags)
+    matches = [f"Shared interest: {tag}" for tag in shared_tags[:3]]
+    if not matches:
+        candidate_headline = ((candidate.get("persona") or {}).get("mobile_profile") or {}).get("headline")
+        if candidate_headline:
+            matches.append(candidate_headline)
+    return matches
 
 
 def _shared_event_ids(user_one: dict[str, Any], user_two: dict[str, Any]) -> list[str]:

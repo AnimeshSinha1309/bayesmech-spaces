@@ -16,6 +16,7 @@ import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -74,8 +75,11 @@ fun EventCard(
                 if (event.isHostedByCurrentUser) {
                     AssistChip(
                         onClick = {},
-                        enabled = false,
                         label = { Text("#host") },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = androidx.compose.ui.graphics.Color.Black,
+                            labelColor = androidx.compose.ui.graphics.Color.White,
+                        ),
                     )
                 }
                 if (event.startLabel.isNotBlank()) {

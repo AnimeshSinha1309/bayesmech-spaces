@@ -13,7 +13,11 @@ CHESS_EVENT_ID_1 = "evt-chess-cafe-opening"
 CHESS_EVENT_ID_2 = "evt-endgame-study-circle"
 CHESS_EVENT_ID_3 = "evt-sunday-speed-chess"
 WRITERS_EVENT_ID = "evt-brick-over-bangalore-writers-room"
-ALL_HOSTED_EVENT_IDS = [
+CURRENT_USER_HOSTED_EVENT_IDS = [
+    RUN_EVENT_ID_2,
+    SNOOKER_EVENT_ID,
+]
+ALL_JOINED_EVENT_IDS = [
     EVENT_ID,
     RUN_EVENT_ID_1,
     RUN_EVENT_ID_2,
@@ -23,6 +27,24 @@ ALL_HOSTED_EVENT_IDS = [
     CHESS_EVENT_ID_3,
     WRITERS_EVENT_ID,
 ]
+EVENT_CREATOR_BY_ID = {
+    EVENT_ID: "usr-attendee-13",
+    RUN_EVENT_ID_1: "usr-attendee-01",
+    RUN_EVENT_ID_2: CURRENT_USER_ID,
+    SNOOKER_EVENT_ID: CURRENT_USER_ID,
+    CHESS_EVENT_ID_1: "usr-attendee-02",
+    CHESS_EVENT_ID_2: "usr-attendee-11",
+    CHESS_EVENT_ID_3: "usr-attendee-06",
+    WRITERS_EVENT_ID: "usr-attendee-15",
+}
+ATTENDEE_HOSTED_EVENT_IDS = {
+    "usr-attendee-01": [RUN_EVENT_ID_1],
+    "usr-attendee-02": [CHESS_EVENT_ID_1],
+    "usr-attendee-06": [CHESS_EVENT_ID_3],
+    "usr-attendee-11": [CHESS_EVENT_ID_2],
+    "usr-attendee-13": [EVENT_ID],
+    "usr-attendee-15": [WRITERS_EVENT_ID],
+}
 ATTENDEE_SPECS = [
     {
         "name": "Nikhil",
@@ -239,7 +261,7 @@ def build_attendees() -> list[dict]:
                 },
                 "connections": [],
                 "event_refs": {
-                    "hosted_event_ids": [],
+                    "hosted_event_ids": ATTENDEE_HOSTED_EVENT_IDS.get(user_id, []),
                     "joined_event_ids": spec["joined_event_ids"],
                     "attended_event_ids": [],
                 },
@@ -346,8 +368,8 @@ def main() -> None:
         },
         "connections": [],
         "event_refs": {
-            "hosted_event_ids": ALL_HOSTED_EVENT_IDS,
-            "joined_event_ids": ALL_HOSTED_EVENT_IDS,
+            "hosted_event_ids": CURRENT_USER_HOSTED_EVENT_IDS,
+            "joined_event_ids": ALL_JOINED_EVENT_IDS,
             "attended_event_ids": [],
         },
         "main_thread_id": CURRENT_USER_THREAD_ID,
@@ -388,7 +410,7 @@ def main() -> None:
     upsert_event(
         {
             "_id": EVENT_ID,
-            "creator_user_id": CURRENT_USER_ID,
+            "creator_user_id": EVENT_CREATOR_BY_ID[EVENT_ID],
             "title": "Rooftop Acoustic Session",
             "description": (
                 "An intimate acoustic evening on a rooftop with stripped-back sets, a small crowd, "
@@ -655,7 +677,7 @@ def main() -> None:
         upsert_event(
             {
                 "_id": event["_id"],
-                "creator_user_id": CURRENT_USER_ID,
+                "creator_user_id": EVENT_CREATOR_BY_ID[event["_id"]],
                 "title": event["title"],
                 "description": event["description"],
                 "category_tags": event["category_tags"],
@@ -699,7 +721,7 @@ def main() -> None:
             "_id": "mem-current-user-event",
             "event_id": EVENT_ID,
             "user_id": CURRENT_USER_ID,
-            "role": "creator",
+            "role": "attendee",
             "rsvp_status": "joined",
             "discovery_source": "direct_chat",
             "joined_at": "2026-04-16T03:33:00Z",
@@ -709,14 +731,15 @@ def main() -> None:
     )
 
     for index in range(1, 17):
+        attendee_user_id = f"usr-attendee-{index:02d}"
         upsert_event_membership(
             {
                 "_id": f"mem-attendee-{index:02d}",
                 "event_id": EVENT_ID,
-                "user_id": f"usr-attendee-{index:02d}",
-                "role": "attendee",
+                "user_id": attendee_user_id,
+                "role": "creator" if attendee_user_id == EVENT_CREATOR_BY_ID[EVENT_ID] else "attendee",
                 "rsvp_status": "joined",
-                "discovery_source": "broadcast",
+                "discovery_source": "direct_chat" if attendee_user_id == EVENT_CREATOR_BY_ID[EVENT_ID] else "broadcast",
                 "joined_at": "2026-04-16T03:34:00Z",
                 "attended_at": None,
                 "left_at": None,
@@ -730,9 +753,9 @@ def main() -> None:
                     "_id": f"mem-{event['_id']}-{participant_user_id}",
                     "event_id": event["_id"],
                     "user_id": participant_user_id,
-                    "role": "creator" if participant_user_id == CURRENT_USER_ID else "attendee",
+                    "role": "creator" if participant_user_id == EVENT_CREATOR_BY_ID[event["_id"]] else "attendee",
                     "rsvp_status": "joined",
-                    "discovery_source": "direct_chat" if participant_user_id == CURRENT_USER_ID else "broadcast",
+                    "discovery_source": "direct_chat" if participant_user_id == EVENT_CREATOR_BY_ID[event["_id"]] else "broadcast",
                     "joined_at": event["created_at"],
                     "attended_at": None,
                     "left_at": None,
