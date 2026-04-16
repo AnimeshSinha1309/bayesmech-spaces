@@ -1,6 +1,11 @@
 package spaces.bayesmech.com.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.media.MediaPlayer
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +20,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -26,7 +32,10 @@ import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.RadioButtonChecked
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerState
@@ -47,18 +56,24 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
+import spaces.bayesmech.com.audio.VoiceNoteRecorder
+import spaces.bayesmech.com.data.AudioNoteAttachment
 import spaces.bayesmech.com.data.ChatMessage
 import spaces.bayesmech.com.data.ChatRepository
 import spaces.bayesmech.com.data.CurrentUser
@@ -76,11 +91,41 @@ fun ChatScreen(
     onProfileClick: () -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
     val messages = remember { mutableStateListOf<ChatMessage>() }
     val listState = rememberLazyListState()
     var composerText by rememberSaveable { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
+    var isRecordingAudio by remember { mutableStateOf(false) }
+    var pendingStartRecording by remember { mutableStateOf(false) }
+    val voiceNoteRecorder = remember { VoiceNoteRecorder(context.applicationContext) }
+    val recordPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { isGranted ->
+        if (isGranted && pendingStartRecording) {
+            runCatching {
+                voiceNoteRecorder.start()
+            }.onSuccess {
+                isRecordingAudio = true
+                loadError = null
+            }.onFailure { error ->
+                Log.e("ChatScreen", "Failed to start voice note recording", error)
+                loadError = error.message ?: "Unable to start recording"
+            }
+        } else if (!isGranted) {
+            loadError = "Microphone permission is required to record a voice note."
+        }
+        pendingStartRecording = false
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (voiceNoteRecorder.isRecording()) {
+                voiceNoteRecorder.cancel()
+            }
+        }
+    }
 
     LaunchedEffect(currentUser.id) {
         runCatching {
@@ -156,14 +201,48 @@ fun ChatScreen(
             Composer(
                 value = composerText,
                 onValueChange = { composerText = it },
+                isRecordingAudio = isRecordingAudio,
                 onRecordAudio = {
-                    messages += ChatMessage(
-                        id = "audio-${messages.size + 1}",
-                        authorName = currentUser.displayName,
-                        body = "Voice note recorded. Audio input will attach here once recording is connected.",
-                        isFromCurrentUser = true,
-                        timestamp = "Now",
-                    )
+                    if (isRecordingAudio) {
+                        runCatching {
+                            voiceNoteRecorder.stop()
+                        }.onSuccess { audioNote ->
+                            isRecordingAudio = false
+                            messages += ChatMessage(
+                                id = "audio-${messages.size + 1}",
+                                authorName = currentUser.displayName,
+                                body = "Voice note",
+                                isFromCurrentUser = true,
+                                timestamp = "Now",
+                                audioNote = audioNote,
+                            )
+                            loadError = null
+                        }.onFailure { error ->
+                            Log.e("ChatScreen", "Failed to stop voice note recording", error)
+                            voiceNoteRecorder.cancel()
+                            isRecordingAudio = false
+                            loadError = error.message ?: "Unable to finish recording"
+                        }
+                    } else {
+                        val permissionState = ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.RECORD_AUDIO,
+                        )
+                        if (permissionState == PackageManager.PERMISSION_GRANTED) {
+                            runCatching {
+                                voiceNoteRecorder.start()
+                            }.onSuccess {
+                                isRecordingAudio = true
+                                loadError = null
+                            }.onFailure { error ->
+                                Log.e("ChatScreen", "Failed to start voice note recording", error)
+                                loadError = error.message ?: "Unable to start recording"
+                            }
+                        } else {
+                            pendingStartRecording = true
+                            recordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    }
                 },
                 onSend = {
                     val messageText = composerText.trim()
@@ -284,11 +363,16 @@ private fun MessageBubble(
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(
-                    text = message.body,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
+                if (message.body.isNotBlank()) {
+                    Text(
+                        text = message.body,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                message.audioNote?.let { audioNote ->
+                    AudioNoteCard(audioNote = audioNote)
+                }
                 message.event?.let { event ->
                     EventCard(
                         title = event.title,
@@ -303,6 +387,81 @@ private fun MessageBubble(
                 Text(
                     text = message.timestamp,
                     style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AudioNoteCard(
+    audioNote: AudioNoteAttachment,
+) {
+    var mediaPlayer by remember(audioNote.filePath) { mutableStateOf<MediaPlayer?>(null) }
+    var isPlaying by remember(audioNote.filePath) { mutableStateOf(false) }
+
+    DisposableEffect(audioNote.filePath) {
+        onDispose {
+            mediaPlayer?.release()
+            mediaPlayer = null
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                onClick = {
+                    if (isPlaying) {
+                        mediaPlayer?.pause()
+                        isPlaying = false
+                    } else {
+                        val player = mediaPlayer ?: MediaPlayer().apply {
+                            setDataSource(audioNote.filePath)
+                            prepare()
+                            setOnCompletionListener {
+                                isPlaying = false
+                                seekTo(0)
+                            }
+                        }.also {
+                            mediaPlayer = it
+                        }
+                        player.start()
+                        isPlaying = true
+                    }
+                },
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(38.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause voice note" else "Play voice note",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "Voice note",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = formatVoiceNoteDuration(audioNote.durationSeconds),
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -433,6 +592,7 @@ private fun AttendeeFaces(
 private fun Composer(
     value: String,
     onValueChange: (String) -> Unit,
+    isRecordingAudio: Boolean,
     onRecordAudio: () -> Unit,
     onSend: () -> Unit,
 ) {
@@ -453,15 +613,22 @@ private fun Composer(
                 onValueChange = onValueChange,
                 modifier = Modifier.weight(1f),
                 placeholder = {
-                    Text("Ask about tonight, start a plan, or create an event")
+                    Text(
+                        if (isRecordingAudio) {
+                            "Recording voice note… tap the mic again to stop"
+                        } else {
+                            "Ask about tonight, start a plan, or create an event"
+                        },
+                    )
                 },
                 shape = RoundedCornerShape(24.dp),
                 maxLines = 4,
+                enabled = !isRecordingAudio,
             )
             Surface(
                 onClick = onRecordAudio,
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant,
+                color = if (isRecordingAudio) Color(0xFFB3261E) else MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier.size(42.dp),
             ) {
                 Box(
@@ -469,9 +636,9 @@ private fun Composer(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.Mic,
-                        contentDescription = "Record audio",
-                        tint = MaterialTheme.colorScheme.onSurface,
+                        imageVector = if (isRecordingAudio) Icons.Rounded.RadioButtonChecked else Icons.Rounded.Mic,
+                        contentDescription = if (isRecordingAudio) "Stop recording audio" else "Record audio",
+                        tint = if (isRecordingAudio) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(20.dp),
                     )
                 }
@@ -481,6 +648,7 @@ private fun Composer(
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(52.dp),
+                enabled = !isRecordingAudio,
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -495,4 +663,10 @@ private fun Composer(
             }
         }
     }
+}
+
+private fun formatVoiceNoteDuration(totalSeconds: Int): String {
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%d:%02d".format(minutes, seconds)
 }

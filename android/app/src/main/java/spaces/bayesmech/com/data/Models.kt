@@ -30,6 +30,12 @@ data class ChatMessage(
     val isFromCurrentUser: Boolean,
     val timestamp: String,
     val event: ChatEvent? = null,
+    val audioNote: AudioNoteAttachment? = null,
+)
+
+data class AudioNoteAttachment(
+    val filePath: String,
+    val durationSeconds: Int,
 )
 
 data class ChatEvent(
