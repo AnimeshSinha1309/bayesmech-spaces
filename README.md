@@ -131,3 +131,87 @@ Third Space aims to become:
 
 Where the right people naturally find the right events—without searching.
 
+## Related Docs
+
+- [Backend schema](./BACKEND_SCHEMA.md)
+
+## Backend
+
+A minimal backend scaffold now exists in `app/` using `FastAPI + MongoDB`.
+
+Local setup:
+
+```bash
+cp .env.example .env
+uv sync
+uv run uvicorn app.main:app --reload
+```
+
+Important env vars:
+
+- `MONGODB_URI`
+- `MONGODB_DB_NAME`
+
+Core API surfaces currently scaffolded:
+
+- `POST /auth/signup`
+- `POST /auth/signin`
+- `POST /auth/google`
+- `GET /users/{user_id}`
+- `PATCH /users/{user_id}`
+- `POST /users/direct-message`
+- `GET /chat/{user_id}`
+- `POST /chat/{user_id}/messages`
+- `POST /events`
+- `GET /events/{event_id}`
+- `PATCH /events/{event_id}`
+- `POST /events/{event_id}/join`
+- `GET /users/{user_id}/events`
+- `GET /events/{event_id}/attendees`
+- `GET /events/{event_id}/chat`
+- `POST /events/{event_id}/chat/messages`
+
+Chat response shape:
+
+- `GET /chat/{user_id}` and `GET /events/{event_id}/chat` both return a dict with:
+  - `thread`: thread metadata
+  - `items`: ordered chat items
+
+Each entry in `items` can represent either a plain text message or a structured card:
+
+```json
+{
+  "_id": "msg_123",
+  "thread_id": "thread_main_usr_123",
+  "thread_type": "dm_with_system",
+  "event_id": null,
+  "sender_type": "assistant",
+  "sender_user_id": null,
+  "message_type": "event_card",
+  "content_text": "Here are two running events you may like.",
+  "content_structured": {
+    "card_type": "event_card",
+    "events": [
+      {
+        "event_id": "evt_123",
+        "title": "Saturday Morning Cubbon Park Run",
+        "start_time": "2026-04-18T01:30:00Z",
+        "location_name": "Cubbon Park"
+      }
+    ]
+  },
+  "created_at": "2026-04-16T12:00:00Z",
+  "edited_at": null
+}
+```
+
+Use `message_type` to decide how to render the item:
+
+- `text`: render `content_text`
+- `event_card`: render `content_structured`
+- `system_notice`: render as system metadata or status text
+
+AWS note:
+
+- the current AWS IAM user can authenticate with STS
+- it does not have `rds:DescribeDBClusters`, so provisioning DocumentDB/RDS-style databases will require extra permissions
