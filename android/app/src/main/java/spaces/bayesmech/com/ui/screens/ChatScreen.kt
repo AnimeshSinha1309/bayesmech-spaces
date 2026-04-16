@@ -508,12 +508,12 @@ private fun Composer(
 ) {
     Surface(
         color = MaterialTheme.colorScheme.background,
-        modifier = modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
+        modifier = modifier
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .imePadding()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
