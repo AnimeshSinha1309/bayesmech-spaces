@@ -6,6 +6,7 @@ import spaces.bayesmech.com.data.CurrentUser
 import spaces.bayesmech.com.data.EventAttendee
 import spaces.bayesmech.com.data.InterestEntry
 import spaces.bayesmech.com.data.JourneyEntry
+import spaces.bayesmech.com.data.ProfileDictionary
 import spaces.bayesmech.com.data.SharedContentItem
 import spaces.bayesmech.com.data.SharedContentType
 
@@ -18,6 +19,16 @@ internal object MockSeedData {
         avatarUrl = "avatar_animesh",
         avatarFallbackPrompt = "A warm Studio Ghibli-inspired portrait of Animesh with a thoughtful expression, soft paper-toned palette, subtle city background, and friendly social energy.",
         interestsSummary = "I’m drawn to things that feel alive, thoughtful, and a little textured. The best events for me usually combine movement, strong taste, or conversations with people who actually care about what they’re doing.",
+        profileDictionary = ProfileDictionary(
+            homeBase = "Bengaluru",
+            workContext = "I work on technology and product problems and care about behavior, interfaces, and why people show up.",
+            socialEnergy = "Low-pressure, thoughtful, and quietly social.",
+            idealPlans = "Small music gatherings, group runs, city walks, and conversations with people building interesting things.",
+            socialGoals = "",
+            conversationSpark = "",
+            interestTags = listOf("running", "startups", "music", "design", "citywalks"),
+            profileNotes = "Prefers spaces with taste, curiosity, and room for real conversation.",
+        ),
         journey = listOf(
             JourneyEntry(
                 title = "Where I’m from",

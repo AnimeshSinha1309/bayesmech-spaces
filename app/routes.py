@@ -3,12 +3,20 @@ from pymongo.errors import DuplicateKeyError
 
 from app.db import db
 from app.matching import score_profiles, score_user_for_event
+from app.profile_ai import (
+    continue_profile_ai_session,
+    end_profile_ai_session,
+    start_profile_ai_session,
+)
 from app.models import (
     ChatMessageCreate,
     DirectMessageCreate,
     EventCreate,
     EventMembershipCreate,
     EventPatch,
+    ProfileAiEndResponse,
+    ProfileAiTurnRequest,
+    ProfileAiTurnResponse,
     UserCreate,
     UserGoogleAuth,
     UserPatch,
@@ -75,6 +83,16 @@ def _get_event_context(event_id: str) -> tuple[dict, dict | None, list[dict], se
     attendee_ids = {membership["user_id"] for membership in memberships}
     attendees = list(db.users.find({"_id": {"$in": list(attendee_ids)}})) if attendee_ids else []
     return event, creator, attendees, attendee_ids
+
+
+def _serialize_profile_ai_transcript(messages: list) -> list[dict[str, str]]:
+    return [
+        {
+            "role": message.role,
+            "text": message.text,
+        }
+        for message in messages
+    ]
 
 
 @router.get("/health")
@@ -223,6 +241,48 @@ def update_user(user_id: str, payload: UserPatch) -> dict:
     if updates:
         db.users.update_one({"_id": user_id}, {"$set": updates})
     return db.users.find_one({"_id": user_id})
+
+
+@router.post("/users/{user_id}/profile-ai/start", response_model=ProfileAiTurnResponse)
+def start_profile_ai(user_id: str, payload: ProfileAiTurnRequest) -> dict:
+    user = db.users.find_one({"_id": user_id}, {"display_name": 1, "persona": 1})
+    current_profile_dict = payload.current_profile_dict or (user.get("persona", {}) if user else {})
+    display_name = payload.display_name or (user.get("display_name") if user else None)
+    return start_profile_ai_session(
+        display_name=display_name,
+        current_profile_dict=current_profile_dict,
+        transcript=_serialize_profile_ai_transcript(payload.transcript),
+    )
+
+
+@router.post("/users/{user_id}/profile-ai/reply", response_model=ProfileAiTurnResponse)
+def reply_profile_ai(user_id: str, payload: ProfileAiTurnRequest) -> dict:
+    user = db.users.find_one({"_id": user_id}, {"display_name": 1})
+    user_message = (payload.user_message or "").strip()
+    if not user_message:
+        raise HTTPException(status_code=400, detail="user_message is required")
+    return continue_profile_ai_session(
+        display_name=payload.display_name or (user.get("display_name") if user else None),
+        current_profile_dict=payload.current_profile_dict,
+        transcript=_serialize_profile_ai_transcript(payload.transcript),
+        user_message=user_message,
+    )
+
+
+@router.post("/users/{user_id}/profile-ai/end", response_model=ProfileAiEndResponse)
+def end_profile_ai(user_id: str, payload: ProfileAiTurnRequest) -> dict:
+    user = db.users.find_one({"_id": user_id}, {"display_name": 1})
+    result = end_profile_ai_session(
+        display_name=payload.display_name or (user.get("display_name") if user else None),
+        current_profile_dict=payload.current_profile_dict,
+        transcript=_serialize_profile_ai_transcript(payload.transcript),
+    )
+    if user:
+        db.users.update_one(
+            {"_id": user_id},
+            {"$set": {"persona": result["final_profile_dict"]}},
+        )
+    return result
 
 
 @router.post("/users/direct-message")

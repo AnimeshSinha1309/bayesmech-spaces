@@ -8,6 +8,7 @@ data class CurrentUser(
     val avatarUrl: String? = null,
     val avatarFallbackPrompt: String,
     val interestsSummary: String,
+    val profileDictionary: ProfileDictionary,
     val journey: List<JourneyEntry>,
     val interests: List<InterestEntry>,
 )
@@ -70,4 +71,34 @@ data class IncomingSharedContent(
     val url: String? = null,
     val previewText: String,
     val sourceAppLabel: String? = null,
+)
+
+data class ProfileDictionary(
+    val homeBase: String = "",
+    val workContext: String = "",
+    val socialEnergy: String = "",
+    val idealPlans: String = "",
+    val socialGoals: String = "",
+    val conversationSpark: String = "",
+    val interestTags: List<String> = emptyList(),
+    val profileNotes: String = "",
+)
+
+data class AiConversationMessage(
+    val role: String,
+    val text: String,
+)
+
+data class AiTurnResult(
+    val assistantText: String,
+    val updatedProfileDict: ProfileDictionary,
+    val isComplete: Boolean,
+    val model: String,
+)
+
+data class AiEndResult(
+    val finalProfileDict: ProfileDictionary,
+    val closingText: String,
+    val isComplete: Boolean,
+    val model: String,
 )

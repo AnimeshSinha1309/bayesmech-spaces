@@ -1,6 +1,7 @@
 package spaces.bayesmech.com.data.mock
 
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import spaces.bayesmech.com.data.ChatMessage
 import spaces.bayesmech.com.data.ChatRepository
 import spaces.bayesmech.com.data.CurrentUser
@@ -15,7 +16,14 @@ class MockChatRepository : ChatRepository {
 }
 
 class MockCurrentUserRepository : CurrentUserRepository {
-    override fun getCurrentUser(): CurrentUser = MockSeedData.currentUser
+    private val currentUserState = mutableStateOf(MockSeedData.currentUser)
+
+    override fun getCurrentUser(): CurrentUser = currentUserState.value
+
+    override fun updateProfileDictionary(profileDictionary: spaces.bayesmech.com.data.ProfileDictionary): CurrentUser {
+        currentUserState.value = currentUserState.value.copy(profileDictionary = profileDictionary)
+        return currentUserState.value
+    }
 }
 
 class MockSharedContentRepository : SharedContentRepository {

@@ -8,6 +8,7 @@ interface ChatRepository {
 
 interface CurrentUserRepository {
     fun getCurrentUser(): CurrentUser
+    fun updateProfileDictionary(profileDictionary: ProfileDictionary): CurrentUser
 }
 
 interface SharedContentRepository {

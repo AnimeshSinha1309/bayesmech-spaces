@@ -38,6 +38,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.launch
 import spaces.bayesmech.com.data.mock.MockRepositories
+import spaces.bayesmech.com.data.ProfileAiApi
 import spaces.bayesmech.com.ui.navigation.AppDestination
 import spaces.bayesmech.com.ui.screens.AiChatScreen
 import spaces.bayesmech.com.ui.screens.ChatScreen
@@ -56,6 +57,7 @@ fun SpacesApp(
     val chatRepository = remember { MockRepositories.chatRepository }
     val currentUserRepository = remember { MockRepositories.currentUserRepository }
     val sharedContentRepository = remember { MockRepositories.sharedContentRepository }
+    val profileAiApi = remember { ProfileAiApi() }
 
     fun navigateTo(destination: AppDestination) {
         navController.navigate(destination.route) {
@@ -135,6 +137,8 @@ fun SpacesApp(
                 }
                 composable(AppDestination.ProfileAi.route) {
                     AiChatScreen(
+                        currentUserRepository = currentUserRepository,
+                        profileAiApi = profileAiApi,
                         onBack = { navController.popBackStack() },
                     )
                 }
