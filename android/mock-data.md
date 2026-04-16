@@ -1,19 +1,17 @@
-# Mock Data Notes
+# Android Data Notes
 
-This Android v1 app uses local seeded data only.
+The Android app now reads its profile and chat content from the backend server.
 
-The seeded data is isolated so it can be replaced by an AWS-backed demo source later without rewriting screen code.
+## Current data locations
 
-## Current mock data locations
+- `app/src/main/java/spaces/bayesmech/com/data/backend/BackendRepository.kt`
+  Fetches the current user and chat transcript from the backend and posts user messages back to it.
 
-- `app/src/main/java/spaces/bayesmech/com/data/mock/MockSeedData.kt`
-  Holds the seeded current user and initial chat transcript.
-
-- `app/src/main/java/spaces/bayesmech/com/data/mock/MockRepositories.kt`
-  Exposes the seeded data through repository interfaces used by the UI.
+- `scripts/seed_android_mock_data.py`
+  Preloads the old Android demo content into MongoDB so the frontend keeps the same behavior without shipping local seed data.
 
 ## Rule for future work
 
 - Do not place demo content directly inside composables.
-- Keep all placeholder users, messages, events, and profile data behind repository interfaces.
-- When the live demo backend is introduced, swap repository implementations first and keep screen APIs stable.
+- Keep app-facing data behind repository interfaces.
+- Add or reshape backend seed data when the UI needs new placeholders or richer demo scenarios.

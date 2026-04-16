@@ -1,5 +1,6 @@
 package spaces.bayesmech.com.ui.screens
 
+import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -74,13 +76,26 @@ fun ChatScreen(
     onProfileClick: () -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
-    val messages = remember {
-        mutableStateListOf<ChatMessage>().apply {
-            addAll(chatRepository.getSeedMessages())
-        }
-    }
+    val messages = remember { mutableStateListOf<ChatMessage>() }
     val listState = rememberLazyListState()
     var composerText by rememberSaveable { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(true) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(currentUser.id) {
+        runCatching {
+            chatRepository.getMessages(currentUser.id)
+        }.onSuccess { loadedMessages ->
+            messages.clear()
+            messages.addAll(loadedMessages)
+            isLoading = false
+            loadError = null
+        }.onFailure { error ->
+            Log.e("ChatScreen", "Failed to load messages", error)
+            isLoading = false
+            loadError = error.message ?: "Unable to load messages"
+        }
+    }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -155,14 +170,22 @@ fun ChatScreen(
                     if (messageText.isEmpty()) {
                         return@Composer
                     }
-                    messages += ChatMessage(
-                        id = "local-${messages.size + 1}",
-                        authorName = currentUser.displayName,
-                        body = messageText,
-                        isFromCurrentUser = true,
-                        timestamp = "Now",
-                    )
-                    composerText = ""
+                    coroutineScope.launch {
+                        runCatching {
+                            chatRepository.sendMessage(
+                                userId = currentUser.id,
+                                authorName = currentUser.displayName,
+                                body = messageText,
+                            )
+                        }.onSuccess { createdMessage ->
+                            messages += createdMessage
+                            composerText = ""
+                            loadError = null
+                        }.onFailure { error ->
+                            Log.e("ChatScreen", "Failed to send message", error)
+                            loadError = error.message ?: "Unable to send message"
+                        }
+                    }
                 },
             )
         },
@@ -189,6 +212,31 @@ fun ChatScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                     )
+                }
+                if (isLoading) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 24.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                }
+                loadError?.let { errorMessage ->
+                    item {
+                        Text(
+                            text = errorMessage,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
                 items(messages, key = { it.id }) { message ->
                     MessageBubble(

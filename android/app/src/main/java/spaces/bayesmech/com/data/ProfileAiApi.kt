@@ -4,13 +4,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import spaces.bayesmech.com.data.backend.BackendConfig
 import java.io.BufferedReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
 class ProfileAiApi(
-    private val baseUrl: String = "http://127.0.0.1:8000",
+    private val baseUrl: String = BackendConfig.baseUrl,
 ) {
     suspend fun startConversation(
         user: CurrentUser,

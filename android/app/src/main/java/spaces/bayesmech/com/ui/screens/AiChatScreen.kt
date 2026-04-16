@@ -46,7 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import spaces.bayesmech.com.data.AiConversationMessage
-import spaces.bayesmech.com.data.CurrentUserRepository
+import spaces.bayesmech.com.data.CurrentUser
 import spaces.bayesmech.com.data.ProfileAiApi
 import spaces.bayesmech.com.data.ProfileDictionary
 import spaces.bayesmech.com.ui.components.AiPatternField
@@ -54,14 +54,14 @@ import spaces.bayesmech.com.ui.components.AiPatternField
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AiChatScreen(
-    currentUserRepository: CurrentUserRepository,
+    currentUser: CurrentUser,
     profileAiApi: ProfileAiApi,
+    onProfileFinalized: (ProfileDictionary) -> Unit,
     onBack: () -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
-    val currentUser = currentUserRepository.getCurrentUser()
     val transcript = remember { mutableStateListOf<AiConversationMessage>() }
-    var profileDictionary by remember { mutableStateOf(currentUser.profileDictionary) }
+    var profileDictionary by remember(currentUser.id) { mutableStateOf(currentUser.profileDictionary) }
     var currentQuestion by rememberSaveable { mutableStateOf("") }
     var draftReply by rememberSaveable { mutableStateOf("") }
     var isConnecting by rememberSaveable { mutableStateOf(true) }
@@ -271,7 +271,7 @@ fun AiChatScreen(
                             )
                         }.onSuccess { result ->
                             profileDictionary = result.finalProfileDict
-                            currentUserRepository.updateProfileDictionary(result.finalProfileDict)
+                            onProfileFinalized(result.finalProfileDict)
                             currentQuestion = result.closingText
                             statusText = if (result.isComplete) {
                                 "Call ended. Final profile dict saved from the AI endpoint."

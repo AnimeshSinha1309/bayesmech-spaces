@@ -76,6 +76,17 @@ def _get_event_or_404(event_id: str) -> dict:
     return event
 
 
+def _get_main_thread_or_404(user_id: str) -> dict:
+    user = db.users.find_one({"_id": user_id}, {"main_thread_id": 1})
+    if not user:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    thread = db.chat_threads.find_one({"_id": user["main_thread_id"]})
+    if not thread:
+        raise HTTPException(status_code=404, detail="main chat thread not found")
+    return thread
+
+
 def _get_event_context(event_id: str) -> tuple[dict, dict | None, list[dict], set[str]]:
     event = _get_event_or_404(event_id)
     creator = db.users.find_one({"_id": event.get("creator_user_id")}) if event.get("creator_user_id") else None
@@ -93,6 +104,15 @@ def _serialize_profile_ai_transcript(messages: list) -> list[dict[str, str]]:
         }
         for message in messages
     ]
+
+
+def _get_profile_dict_from_user(user: dict | None) -> dict:
+    if not user:
+        return {}
+    persona = user.get("persona") or {}
+    if isinstance(persona.get("profile_dict"), dict):
+        return persona["profile_dict"]
+    return persona if isinstance(persona, dict) else {}
 
 
 @router.get("/health")
@@ -233,6 +253,16 @@ def get_user(user_id: str) -> dict:
     return _get_user_or_404(user_id)
 
 
+@router.get("/mobile/bootstrap/{user_id}")
+def get_mobile_bootstrap(user_id: str) -> dict:
+    user = _get_user_or_404(user_id)
+    thread = _get_main_thread_or_404(user_id)
+    return {
+        "current_user": user,
+        "main_chat": _build_thread_payload(thread),
+    }
+
+
 @router.patch("/users/{user_id}")
 def update_user(user_id: str, payload: UserPatch) -> dict:
     _get_user_or_404(user_id)
@@ -246,7 +276,7 @@ def update_user(user_id: str, payload: UserPatch) -> dict:
 @router.post("/users/{user_id}/profile-ai/start", response_model=ProfileAiTurnResponse)
 def start_profile_ai(user_id: str, payload: ProfileAiTurnRequest) -> dict:
     user = db.users.find_one({"_id": user_id}, {"display_name": 1, "persona": 1})
-    current_profile_dict = payload.current_profile_dict or (user.get("persona", {}) if user else {})
+    current_profile_dict = payload.current_profile_dict or _get_profile_dict_from_user(user)
     display_name = payload.display_name or (user.get("display_name") if user else None)
     return start_profile_ai_session(
         display_name=display_name,
@@ -280,7 +310,7 @@ def end_profile_ai(user_id: str, payload: ProfileAiTurnRequest) -> dict:
     if user:
         db.users.update_one(
             {"_id": user_id},
-            {"$set": {"persona": result["final_profile_dict"]}},
+            {"$set": {"persona.profile_dict": result["final_profile_dict"]}},
         )
     return result
 
@@ -510,25 +540,13 @@ def _create_chat_message(thread: dict, payload: ChatMessageCreate) -> dict:
 
 @router.get("/chat/{user_id}")
 def get_main_chat(user_id: str) -> dict:
-    user = db.users.find_one({"_id": user_id}, {"main_thread_id": 1})
-    if not user:
-        raise HTTPException(status_code=404, detail="user not found")
-
-    thread = db.chat_threads.find_one({"_id": user["main_thread_id"]})
-    if not thread:
-        raise HTTPException(status_code=404, detail="main chat thread not found")
+    thread = _get_main_thread_or_404(user_id)
     return _build_thread_payload(thread)
 
 
 @router.post("/chat/{user_id}/messages")
 def create_main_chat_message(user_id: str, payload: ChatMessageCreate) -> dict:
-    user = db.users.find_one({"_id": user_id}, {"main_thread_id": 1})
-    if not user:
-        raise HTTPException(status_code=404, detail="user not found")
-
-    thread = db.chat_threads.find_one({"_id": user["main_thread_id"]})
-    if not thread:
-        raise HTTPException(status_code=404, detail="main chat thread not found")
+    thread = _get_main_thread_or_404(user_id)
     return _create_chat_message(thread, payload)
 
 
