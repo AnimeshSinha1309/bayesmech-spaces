@@ -37,6 +37,11 @@ enum class AppDestination(
         label = "Talk to AI",
         icon = Icons.Rounded.Person,
     ),
+    EventChat(
+        route = "event-chat",
+        label = "Event Chat",
+        icon = Icons.Rounded.Groups,
+    ),
     Profile(
         route = "profile",
         label = "Profile",

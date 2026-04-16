@@ -89,6 +89,7 @@ fun SpacesApp() {
                         chatRepository = chatRepository,
                         currentUser = currentUserRepository.getCurrentUser(),
                         drawerState = drawerState,
+                        onOpenEventChat = { navigateTo(AppDestination.EventChat) },
                         onProfileClick = { navigateTo(AppDestination.Profile) },
                     )
                 }
@@ -122,6 +123,13 @@ fun SpacesApp() {
                 }
                 composable(AppDestination.ProfileAi.route) {
                     AiChatScreen(
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable(AppDestination.EventChat.route) {
+                    PlaceholderScreen(
+                        title = "Event Chat",
+                        description = "This will become the event-specific conversation space for attendees. It is intentionally empty for now.",
                         onBack = { navController.popBackStack() },
                     )
                 }

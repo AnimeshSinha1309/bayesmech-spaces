@@ -28,4 +28,19 @@ data class ChatMessage(
     val body: String,
     val isFromCurrentUser: Boolean,
     val timestamp: String,
+    val event: ChatEvent? = null,
+)
+
+data class ChatEvent(
+    val title: String,
+    val locationName: String,
+    val mapsUrl: String,
+    val description: String,
+    val attendees: List<EventAttendee>,
+    val additionalAttendeeCount: Int = 0,
+)
+
+data class EventAttendee(
+    val displayName: String,
+    val avatarUrl: String? = null,
 )

@@ -1,7 +1,9 @@
 package spaces.bayesmech.com.data.mock
 
 import spaces.bayesmech.com.data.ChatMessage
+import spaces.bayesmech.com.data.ChatEvent
 import spaces.bayesmech.com.data.CurrentUser
+import spaces.bayesmech.com.data.EventAttendee
 import spaces.bayesmech.com.data.InterestEntry
 import spaces.bayesmech.com.data.JourneyEntry
 
@@ -70,9 +72,21 @@ internal object MockSeedData {
         ChatMessage(
             id = "msg-3",
             authorName = "Spaces",
-            body = "I can help with that. Tonight looks strong for a rooftop acoustic set and a small founder dinner.",
+            body = "I can help with that. Here is one event that matches your vibe tonight.",
             isFromCurrentUser = false,
             timestamp = "9:04 AM",
+            event = ChatEvent(
+                title = "Rooftop Acoustic Session",
+                locationName = "Dialogues Cafe, Koramangala",
+                mapsUrl = "https://maps.google.com/?q=Dialogues+Cafe+Koramangala+Bengaluru",
+                description = "An intimate acoustic evening on a rooftop with stripped-back sets, a small crowd, and enough room to actually talk between songs.",
+                attendees = listOf(
+                    EventAttendee("Nikhil"),
+                    EventAttendee("Rhea"),
+                    EventAttendee("Sana"),
+                ),
+                additionalAttendeeCount = 13,
+            ),
         ),
         ChatMessage(
             id = "msg-4",
