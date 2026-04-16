@@ -68,6 +68,17 @@ def _get_event_or_404(event_id: str) -> dict:
     return event
 
 
+def _get_main_thread_or_404(user_id: str) -> dict:
+    user = db.users.find_one({"_id": user_id}, {"main_thread_id": 1})
+    if not user:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    thread = db.chat_threads.find_one({"_id": user["main_thread_id"]})
+    if not thread:
+        raise HTTPException(status_code=404, detail="main chat thread not found")
+    return thread
+
+
 def _get_event_context(event_id: str) -> tuple[dict, dict | None, list[dict], set[str]]:
     event = _get_event_or_404(event_id)
     creator = db.users.find_one({"_id": event.get("creator_user_id")}) if event.get("creator_user_id") else None
@@ -213,6 +224,16 @@ def google_auth(payload: UserGoogleAuth) -> dict:
 @router.get("/users/{user_id}")
 def get_user(user_id: str) -> dict:
     return _get_user_or_404(user_id)
+
+
+@router.get("/mobile/bootstrap/{user_id}")
+def get_mobile_bootstrap(user_id: str) -> dict:
+    user = _get_user_or_404(user_id)
+    thread = _get_main_thread_or_404(user_id)
+    return {
+        "current_user": user,
+        "main_chat": _build_thread_payload(thread),
+    }
 
 
 @router.patch("/users/{user_id}")
@@ -450,25 +471,13 @@ def _create_chat_message(thread: dict, payload: ChatMessageCreate) -> dict:
 
 @router.get("/chat/{user_id}")
 def get_main_chat(user_id: str) -> dict:
-    user = db.users.find_one({"_id": user_id}, {"main_thread_id": 1})
-    if not user:
-        raise HTTPException(status_code=404, detail="user not found")
-
-    thread = db.chat_threads.find_one({"_id": user["main_thread_id"]})
-    if not thread:
-        raise HTTPException(status_code=404, detail="main chat thread not found")
+    thread = _get_main_thread_or_404(user_id)
     return _build_thread_payload(thread)
 
 
 @router.post("/chat/{user_id}/messages")
 def create_main_chat_message(user_id: str, payload: ChatMessageCreate) -> dict:
-    user = db.users.find_one({"_id": user_id}, {"main_thread_id": 1})
-    if not user:
-        raise HTTPException(status_code=404, detail="user not found")
-
-    thread = db.chat_threads.find_one({"_id": user["main_thread_id"]})
-    if not thread:
-        raise HTTPException(status_code=404, detail="main chat thread not found")
+    thread = _get_main_thread_or_404(user_id)
     return _create_chat_message(thread, payload)
 
 

@@ -1,5 +1,6 @@
 package spaces.bayesmech.com.ui
 
+import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,7 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
@@ -27,6 +29,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -37,7 +42,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.launch
-import spaces.bayesmech.com.data.mock.MockRepositories
+import spaces.bayesmech.com.data.AppRepositories
+import spaces.bayesmech.com.data.backend.BackendConfig
 import spaces.bayesmech.com.ui.navigation.AppDestination
 import spaces.bayesmech.com.ui.screens.AiChatScreen
 import spaces.bayesmech.com.ui.screens.ChatScreen
@@ -53,9 +59,56 @@ fun SpacesApp(
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
-    val chatRepository = remember { MockRepositories.chatRepository }
-    val currentUserRepository = remember { MockRepositories.currentUserRepository }
-    val sharedContentRepository = remember { MockRepositories.sharedContentRepository }
+    val repository = remember { AppRepositories.backendRepository }
+    val sharedContentRepository = remember { AppRepositories.sharedContentRepository }
+    var currentUser by remember { mutableStateOf<spaces.bayesmech.com.data.CurrentUser?>(null) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        runCatching {
+            repository.getCurrentUser(BackendConfig.currentUserId)
+        }.onSuccess { user ->
+            currentUser = user
+            loadError = null
+        }.onFailure { error ->
+            Log.e("SpacesApp", "Failed to load current user from backend", error)
+            loadError = error.message ?: "Unable to connect to backend"
+        }
+    }
+
+    val resolvedCurrentUser = currentUser
+    if (resolvedCurrentUser == null) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                if (loadError == null) {
+                    CircularProgressIndicator()
+                    Text(
+                        text = "Loading Spaces…",
+                        modifier = Modifier.padding(top = 16.dp),
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                } else {
+                    Text(
+                        text = loadError ?: "Unable to load data",
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    Text(
+                        text = "Make sure the backend is running and reachable at ${BackendConfig.baseUrl}.",
+                        modifier = Modifier.padding(top = 8.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        return
+    }
 
     fun navigateTo(destination: AppDestination) {
         navController.navigate(destination.route) {
@@ -79,7 +132,7 @@ fun SpacesApp(
         drawerContent = {
             AppDrawer(
                 navController = navController,
-                currentUserName = currentUserRepository.getCurrentUser().displayName,
+                currentUserName = resolvedCurrentUser.displayName,
                 onDestinationSelected = { destination ->
                     navigateTo(destination)
                     drawerScope.launch { drawerState.close() }
@@ -97,8 +150,8 @@ fun SpacesApp(
             ) {
                 composable(AppDestination.Chat.route) {
                     ChatScreen(
-                        chatRepository = chatRepository,
-                        currentUser = currentUserRepository.getCurrentUser(),
+                        chatRepository = repository,
+                        currentUser = resolvedCurrentUser,
                         drawerState = drawerState,
                         onOpenEventChat = { navigateTo(AppDestination.EventChat) },
                         onProfileClick = { navigateTo(AppDestination.Profile) },
@@ -121,14 +174,14 @@ fun SpacesApp(
                 composable(AppDestination.Content.route) {
                     ContentScreen(
                         sharedContent = sharedContentRepository.getSharedContent(),
-                        currentUser = currentUserRepository.getCurrentUser(),
+                        currentUser = resolvedCurrentUser,
                         drawerState = drawerState,
                         latestSourceAppLabel = sharedFromLabel,
                     )
                 }
                 composable(AppDestination.Profile.route) {
                     ProfileScreen(
-                        currentUser = currentUserRepository.getCurrentUser(),
+                        currentUser = resolvedCurrentUser,
                         onTalkToAi = { navigateTo(AppDestination.ProfileAi) },
                         onBack = { navController.popBackStack() },
                     )

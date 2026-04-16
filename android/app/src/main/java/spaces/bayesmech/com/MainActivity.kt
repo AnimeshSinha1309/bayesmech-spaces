@@ -5,11 +5,13 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import kotlinx.coroutines.runBlocking
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import spaces.bayesmech.com.data.mock.MockRepositories
+import spaces.bayesmech.com.data.AppRepositories
+import spaces.bayesmech.com.data.backend.BackendConfig
 import spaces.bayesmech.com.share.ShareIntentParser
 import spaces.bayesmech.com.ui.SpacesApp
 import spaces.bayesmech.com.ui.theme.SpacesTheme
@@ -40,7 +42,9 @@ class MainActivity : ComponentActivity() {
 
     private fun handleShareIntent(intent: Intent?) {
         val safeIntent = intent ?: return
-        val currentUser = MockRepositories.currentUserRepository.getCurrentUser()
+        val currentUser = runBlocking {
+            AppRepositories.backendRepository.getCurrentUser(BackendConfig.currentUserId)
+        }
         val sourceAppLabel = safeIntent.`package`?.let { packageName ->
             runCatching {
                 packageManager.getApplicationLabel(
@@ -54,7 +58,7 @@ class MainActivity : ComponentActivity() {
             sourceAppLabel = sourceAppLabel,
         ) ?: return
 
-        MockRepositories.sharedContentRepository.addSharedContent(
+        AppRepositories.sharedContentRepository.addSharedContent(
             content = sharedContent,
             sharedBy = currentUser,
         )
