@@ -160,6 +160,7 @@ Core API surfaces currently scaffolded:
 - `POST /auth/signin`
 - `POST /auth/google`
 - `GET /users/{user_id}`
+- `GET /mobile/bootstrap/{user_id}`
 - `PATCH /users/{user_id}`
 - `POST /users/direct-message`
 - `GET /connections/score/{user_1}/{user_2}`
@@ -216,6 +217,22 @@ Use `message_type` to decide how to render the item:
 - `text`: render `content_text`
 - `event_card`: render `content_structured`
 - `system_notice`: render as system metadata or status text
+
+Android demo seed:
+
+```bash
+uv run python scripts/seed_android_mock_data.py
+```
+
+This creates the seeded mobile demo user `user-animesh`, its main chat thread, a demo event, and matching attendees directly in MongoDB.
+
+Android app to local backend:
+
+```bash
+ANDROID_SDK_ROOT=/home/animesh/Android/Sdk ./android/gradlew -p android installDebug
+```
+
+The Android app now expects the backend at `http://192.168.252.189:8000` on your local network.
 
 AWS note:
 

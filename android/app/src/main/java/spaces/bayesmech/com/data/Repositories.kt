@@ -3,11 +3,17 @@ package spaces.bayesmech.com.data
 import androidx.compose.runtime.snapshots.SnapshotStateList
 
 interface ChatRepository {
-    fun getSeedMessages(): List<ChatMessage>
+    suspend fun getMessages(userId: String): List<ChatMessage>
+
+    suspend fun sendMessage(
+        userId: String,
+        authorName: String,
+        body: String,
+    ): ChatMessage
 }
 
 interface CurrentUserRepository {
-    fun getCurrentUser(): CurrentUser
+    suspend fun getCurrentUser(userId: String): CurrentUser
 }
 
 interface SharedContentRepository {
