@@ -39,8 +39,10 @@ import kotlinx.coroutines.launch
 import spaces.bayesmech.com.data.mock.MockChatRepository
 import spaces.bayesmech.com.data.mock.MockCurrentUserRepository
 import spaces.bayesmech.com.ui.navigation.AppDestination
+import spaces.bayesmech.com.ui.screens.AiChatScreen
 import spaces.bayesmech.com.ui.screens.ChatScreen
 import spaces.bayesmech.com.ui.screens.PlaceholderScreen
+import spaces.bayesmech.com.ui.screens.ProfileScreen
 
 @Composable
 fun SpacesApp() {
@@ -104,10 +106,22 @@ fun SpacesApp() {
                         onBack = { navController.popBackStack() },
                     )
                 }
-                composable(AppDestination.Profile.route) {
+                composable(AppDestination.Content.route) {
                     PlaceholderScreen(
-                        title = "Profile",
-                        description = "Your interests, preferences, and event history will live here as the app evolves.",
+                        title = "Content",
+                        description = "This page is intentionally empty for now and will become the home for future content flows.",
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable(AppDestination.Profile.route) {
+                    ProfileScreen(
+                        currentUser = currentUserRepository.getCurrentUser(),
+                        onTalkToAi = { navigateTo(AppDestination.ProfileAi) },
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable(AppDestination.ProfileAi.route) {
+                    AiChatScreen(
                         onBack = { navController.popBackStack() },
                     )
                 }
@@ -123,7 +137,11 @@ private fun AppDrawer(
     onDestinationSelected: (AppDestination) -> Unit,
 ) {
     val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
-    val drawerItems = listOf(AppDestination.Community, AppDestination.Signups)
+    val drawerItems = listOf(
+        AppDestination.Community,
+        AppDestination.Signups,
+        AppDestination.Content,
+    )
 
     ModalDrawerSheet(
         modifier = Modifier.fillMaxHeight(),

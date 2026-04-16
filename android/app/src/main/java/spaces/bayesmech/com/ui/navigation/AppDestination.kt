@@ -3,6 +3,7 @@ package spaces.bayesmech.com.ui.navigation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.EventAvailable
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.LibraryBooks
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -25,6 +26,16 @@ enum class AppDestination(
         route = "signups",
         label = "Signups",
         icon = Icons.Rounded.EventAvailable,
+    ),
+    Content(
+        route = "content",
+        label = "Content",
+        icon = Icons.Rounded.LibraryBooks,
+    ),
+    ProfileAi(
+        route = "profile-ai",
+        label = "Talk to AI",
+        icon = Icons.Rounded.Person,
     ),
     Profile(
         route = "profile",
