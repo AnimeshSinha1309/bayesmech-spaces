@@ -1,0 +1,15 @@
+[project]
+name = "third-space-backend"
+version = "0.1.0"
+description = "Hackathon backend for Third Space"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115.0",
+  "openai>=1.75.0",
+  "pymongo>=4.8.0",
+  "pydantic>=2.9.0",
+  "pydantic-settings>=2.5.0",
+  "python-dotenv>=1.0.1",
+  "uvicorn>=0.30.6",
+]
