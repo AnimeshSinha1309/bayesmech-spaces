@@ -48,6 +48,7 @@ That is enough to support:
 - sign up / sign in
 - Google OAuth
 - profile storage
+- OpenAI-based profile matching
 - event creation
 - targeted event suggestions
 - event joining
@@ -168,6 +169,93 @@ Put all inferred profile data in `persona`. This blob is what the backend should
 Store direct user relationships in `connections`. This is specifically the set of people the user has explicitly chatted with one-to-one, along with the DM thread id needed to reopen that conversation.
 
 Store actual event references in `event_refs`, not just counts. You need those ids to render profile history and to explain why someone is in a user's community.
+
+## Connection Matching
+
+Use the OpenAI API to score compatibility between two users from their stored profile data.
+
+Endpoints:
+
+- `/connections/score/{user_1}/{user_2}`
+- `/connections/findnew/{user_1}`
+
+`/connections/score/{user_1}/{user_2}` should:
+
+- load both users
+- pass their profile payloads to OpenAI
+- return a dict like:
+
+```json
+{
+  "user_1": "usr_123",
+  "user_2": "usr_456",
+  "score": 82,
+  "reasoning": "Both users prefer small-group, outdoor social activity and have similar social openness.",
+  "what_matches": [
+    "Shared interest in running and casual weekend plans",
+    "Both seem open to meeting new people"
+  ],
+  "what_does_not_match": [
+    "One user prefers very local events while the other may travel further"
+  ]
+}
+```
+
+`/connections/findnew/{user_1}` should:
+
+- exclude `user_1`
+- exclude users already present in `user_1.connections`
+- score the remaining candidates
+- return the top matches
+
+## Event Matching And Broadcast
+
+Use the OpenAI API to score whether a user should be shown an event.
+
+Endpoints:
+
+- `/events/{event_id}/score/{user_id}`
+- `/events/{event_id}/broadcast`
+
+`/events/{event_id}/score/{user_id}` should send:
+
+- the target user's profile
+- the event document
+- the event creator's user/profile data
+- profile data for users already attending
+
+This matters because event fit is not just about event tags. It also depends on:
+
+- whether the creator feels relevant to the target user
+- whether the current attendee mix feels compatible
+- whether the user's social intent fits the event vibe
+
+Suggested response shape:
+
+```json
+{
+  "user_id": "usr_789",
+  "event_id": "evt_123",
+  "score": 84,
+  "reasoning": "The user likes casual outdoor weekend plans and the current attendee mix suggests a small, social event.",
+  "what_matches": [
+    "Strong overlap with running and coffee interests",
+    "Weekend morning timing fits user preference"
+  ],
+  "what_does_not_match": [
+    "Travel distance may be slightly above the user's usual preference"
+  ]
+}
+```
+
+`/events/{event_id}/broadcast` should:
+
+- exclude the event creator
+- exclude current attendees
+- exclude users already in `event_broadcasts` for this event
+- score the remaining candidates
+- store top candidates in `event_broadcasts`
+- return the ranked list
 
 ## Event Schema
 

@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from app.db import db
+from app.matching import score_profiles, score_user_for_event
 from app.models import (
     ChatMessageCreate,
     DirectMessageCreate,
@@ -51,6 +52,29 @@ def _build_thread_payload(thread: dict) -> dict:
         },
         "items": messages,
     }
+
+
+def _get_user_or_404(user_id: str) -> dict:
+    user = db.users.find_one({"_id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="user not found")
+    return user
+
+
+def _get_event_or_404(event_id: str) -> dict:
+    event = db.events.find_one({"_id": event_id})
+    if not event:
+        raise HTTPException(status_code=404, detail="event not found")
+    return event
+
+
+def _get_event_context(event_id: str) -> tuple[dict, dict | None, list[dict], set[str]]:
+    event = _get_event_or_404(event_id)
+    creator = db.users.find_one({"_id": event.get("creator_user_id")}) if event.get("creator_user_id") else None
+    memberships = list(db.event_memberships.find({"event_id": event_id}))
+    attendee_ids = {membership["user_id"] for membership in memberships}
+    attendees = list(db.users.find({"_id": {"$in": list(attendee_ids)}})) if attendee_ids else []
+    return event, creator, attendees, attendee_ids
 
 
 @router.get("/health")
@@ -188,17 +212,12 @@ def google_auth(payload: UserGoogleAuth) -> dict:
 
 @router.get("/users/{user_id}")
 def get_user(user_id: str) -> dict:
-    user = db.users.find_one({"_id": user_id})
-    if not user:
-        raise HTTPException(status_code=404, detail="user not found")
-    return user
+    return _get_user_or_404(user_id)
 
 
 @router.patch("/users/{user_id}")
 def update_user(user_id: str, payload: UserPatch) -> dict:
-    existing = db.users.find_one({"_id": user_id})
-    if not existing:
-        raise HTTPException(status_code=404, detail="user not found")
+    _get_user_or_404(user_id)
 
     updates = payload.model_dump(exclude_none=True)
     if updates:
@@ -208,10 +227,8 @@ def update_user(user_id: str, payload: UserPatch) -> dict:
 
 @router.post("/users/direct-message")
 def create_or_get_direct_message(payload: DirectMessageCreate) -> dict:
-    user = db.users.find_one({"_id": payload.user_id})
-    other_user = db.users.find_one({"_id": payload.other_user_id})
-    if not user or not other_user:
-        raise HTTPException(status_code=404, detail="user not found")
+    user = _get_user_or_404(payload.user_id)
+    other_user = _get_user_or_404(payload.other_user_id)
 
     thread_id = dm_thread_id(payload.user_id, payload.other_user_id)
     existing_thread = db.chat_threads.find_one({"_id": thread_id})
@@ -254,9 +271,7 @@ def create_or_get_direct_message(payload: DirectMessageCreate) -> dict:
 
 @router.post("/events")
 def create_event(payload: EventCreate) -> dict:
-    creator = db.users.find_one({"_id": payload.creator_user_id})
-    if not creator:
-        raise HTTPException(status_code=404, detail="creator not found")
+    _get_user_or_404(payload.creator_user_id)
 
     event_id = prefixed_id("evt")
     thread_id = f"thread_event_{event_id}"
@@ -335,17 +350,12 @@ def create_event(payload: EventCreate) -> dict:
 
 @router.get("/events/{event_id}")
 def get_event(event_id: str) -> dict:
-    event = db.events.find_one({"_id": event_id})
-    if not event:
-        raise HTTPException(status_code=404, detail="event not found")
-    return event
+    return _get_event_or_404(event_id)
 
 
 @router.patch("/events/{event_id}")
 def update_event(event_id: str, payload: EventPatch) -> dict:
-    event = db.events.find_one({"_id": event_id})
-    if not event:
-        raise HTTPException(status_code=404, detail="event not found")
+    _get_event_or_404(event_id)
 
     updates = payload.model_dump(exclude_none=True)
     updates["updated_at"] = utc_now()
@@ -484,3 +494,126 @@ def create_event_chat_message(event_id: str, payload: ChatMessageCreate) -> dict
     if not thread:
         raise HTTPException(status_code=404, detail="event chat thread not found")
     return _create_chat_message(thread, payload)
+
+
+@router.get("/events/{event_id}/score/{user_id}")
+def score_event_for_user_route(event_id: str, user_id: str) -> dict:
+    user = _get_user_or_404(user_id)
+    event, creator, attendees, _ = _get_event_context(event_id)
+    return score_user_for_event(user, event, creator, attendees)
+
+
+@router.post("/events/{event_id}/broadcast")
+def broadcast_event_to_best_matches(event_id: str, limit: int = 5) -> dict:
+    event, creator, attendees, attendee_ids = _get_event_context(event_id)
+    already_broadcast_ids = {
+        broadcast["user_id"]
+        for broadcast in db.event_broadcasts.find({"event_id": event_id}, {"user_id": 1})
+    }
+    excluded_user_ids = set(attendee_ids) | already_broadcast_ids
+    if creator:
+        excluded_user_ids.add(creator["_id"])
+
+    candidate_users = list(
+        db.users.find(
+            {
+                "_id": {
+                    "$nin": list(excluded_user_ids),
+                }
+            }
+        )
+    )
+
+    scored_candidates = []
+    top_n = max(1, min(limit, 50))
+    now = utc_now()
+    for candidate in candidate_users:
+        score = score_user_for_event(candidate, event, creator, attendees)
+        scored_candidates.append(
+            {
+                "user_id": candidate["_id"],
+                "display_name": candidate.get("display_name"),
+                "username": candidate.get("username"),
+                "avatar_url": candidate.get("avatar_url"),
+                "score": score["score"],
+                "reasoning": score["reasoning"],
+                "what_matches": score["what_matches"],
+                "what_does_not_match": score["what_does_not_match"],
+            }
+        )
+
+    scored_candidates.sort(key=lambda item: item["score"], reverse=True)
+    selected_candidates = scored_candidates[:top_n]
+
+    for candidate in selected_candidates:
+        db.event_broadcasts.update_one(
+            {"event_id": event_id, "user_id": candidate["user_id"]},
+            {
+                "$set": {
+                    "score": candidate["score"],
+                    "broadcast_reason": candidate["reasoning"],
+                    "broadcasted_at": now,
+                    "conversion_status": "unseen",
+                },
+                "$setOnInsert": {
+                    "_id": prefixed_id("brd"),
+                    "seen_at": None,
+                    "clicked_at": None,
+                    "dismissed_at": None,
+                },
+            },
+            upsert=True,
+        )
+
+    return {
+        "event_id": event_id,
+        "evaluated_candidates": len(scored_candidates),
+        "broadcasted_candidates": len(selected_candidates),
+        "results": selected_candidates,
+    }
+
+
+@router.get("/connections/score/{user_1}/{user_2}")
+def get_connection_score(user_1: str, user_2: str) -> dict:
+    first_user = _get_user_or_404(user_1)
+    second_user = _get_user_or_404(user_2)
+    return score_profiles(first_user, second_user)
+
+
+@router.get("/connections/findnew/{user_1}")
+def find_new_connections(user_1: str, limit: int = 5) -> dict:
+    current_user = _get_user_or_404(user_1)
+    existing_connection_ids = {connection["user_id"] for connection in current_user.get("connections", [])}
+    candidate_users = list(
+        db.users.find(
+            {
+                "_id": {
+                    "$ne": user_1,
+                    "$nin": list(existing_connection_ids),
+                }
+            }
+        )
+    )
+
+    scored_candidates = []
+    for candidate in candidate_users:
+        score = score_profiles(current_user, candidate)
+        scored_candidates.append(
+            {
+                "user_id": candidate["_id"],
+                "display_name": candidate.get("display_name"),
+                "username": candidate.get("username"),
+                "avatar_url": candidate.get("avatar_url"),
+                "score": score["score"],
+                "reasoning": score["reasoning"],
+                "what_matches": score["what_matches"],
+                "what_does_not_match": score["what_does_not_match"],
+            }
+        )
+
+    scored_candidates.sort(key=lambda item: item["score"], reverse=True)
+    return {
+        "user_id": user_1,
+        "evaluated_candidates": len(scored_candidates),
+        "results": scored_candidates[: max(1, min(limit, 20))],
+    }

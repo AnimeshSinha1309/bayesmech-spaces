@@ -151,6 +151,8 @@ Important env vars:
 
 - `MONGODB_URI`
 - `MONGODB_DB_NAME`
+- `OPENAI_KEY`
+- `OPENAI_MODEL` (optional)
 
 Core API surfaces currently scaffolded:
 
@@ -160,12 +162,16 @@ Core API surfaces currently scaffolded:
 - `GET /users/{user_id}`
 - `PATCH /users/{user_id}`
 - `POST /users/direct-message`
+- `GET /connections/score/{user_1}/{user_2}`
+- `GET /connections/findnew/{user_1}`
 - `GET /chat/{user_id}`
 - `POST /chat/{user_id}/messages`
 - `POST /events`
 - `GET /events/{event_id}`
 - `PATCH /events/{event_id}`
 - `POST /events/{event_id}/join`
+- `GET /events/{event_id}/score/{user_id}`
+- `POST /events/{event_id}/broadcast`
 - `GET /users/{user_id}/events`
 - `GET /events/{event_id}/attendees`
 - `GET /events/{event_id}/chat`
@@ -215,3 +221,26 @@ AWS note:
 
 - the current AWS IAM user can authenticate with STS
 - it does not have `rds:DescribeDBClusters`, so provisioning DocumentDB/RDS-style databases will require extra permissions
+
+Connection matching:
+
+- `/connections/score/{user_1}/{user_2}` sends both users' stored profile data to the OpenAI API and returns:
+  - `score`
+  - `reasoning`
+  - `what_matches`
+  - `what_does_not_match`
+- `/connections/findnew/{user_1}` compares `user_1` against users they are not already connected to and returns the highest-scoring candidates
+
+Event matching:
+
+- `/events/{event_id}/score/{user_id}` sends:
+  - the user's stored profile data
+  - the event data
+  - the creator's user data
+  - user data for attendees already going
+  to the OpenAI API and returns:
+  - `score`
+  - `reasoning`
+  - `what_matches`
+  - `what_does_not_match`
+- `/events/{event_id}/broadcast?limit=10` scores eligible users for the event, excludes the creator/current attendees/already-broadcasted users, writes top candidates to `event_broadcasts`, and returns the ranked candidates
