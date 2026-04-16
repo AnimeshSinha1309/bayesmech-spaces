@@ -3,8 +3,10 @@ package spaces.bayesmech.com.data.backend
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
@@ -17,6 +19,7 @@ import spaces.bayesmech.com.data.EventAttendee
 import spaces.bayesmech.com.data.InterestEntry
 import spaces.bayesmech.com.data.JourneyEntry
 import spaces.bayesmech.com.data.ProfileDictionary
+import java.io.File
 import java.io.IOException
 import java.time.Instant
 import java.time.ZoneId
@@ -63,6 +66,34 @@ class BackendRepository(
             val message = parseChatMessage(responseJson, userId, currentUser.displayName)
             cachedBootstrap = cachedBootstrap?.copy(messages = cachedBootstrap!!.messages + message)
             message
+        }
+    }
+
+    override suspend fun transcribeAudio(
+        userId: String,
+        filePath: String,
+    ): String {
+        return withContext(Dispatchers.IO) {
+            val audioFile = File(filePath)
+            if (!audioFile.exists()) {
+                throw IOException("Recorded audio file is missing")
+            }
+
+            val requestBody = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart(
+                    name = "file",
+                    filename = audioFile.name,
+                    body = audioFile.asRequestBody("audio/mp4".toMediaType()),
+                )
+                .build()
+
+            val request = Request.Builder()
+                .url("${BackendConfig.baseUrl}/chat/$userId/transcribe")
+                .post(requestBody)
+                .build()
+
+            executeJsonRequest(request).getString("text").trim()
         }
     }
 

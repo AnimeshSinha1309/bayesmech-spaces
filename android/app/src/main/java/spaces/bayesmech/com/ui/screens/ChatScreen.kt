@@ -2,7 +2,6 @@ package spaces.bayesmech.com.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.media.MediaPlayer
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -32,9 +31,7 @@ import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Mic
-import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RadioButtonChecked
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
@@ -73,7 +70,6 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 import spaces.bayesmech.com.audio.VoiceNoteRecorder
-import spaces.bayesmech.com.data.AudioNoteAttachment
 import spaces.bayesmech.com.data.ChatMessage
 import spaces.bayesmech.com.data.ChatRepository
 import spaces.bayesmech.com.data.CurrentUser
@@ -98,6 +94,7 @@ fun ChatScreen(
     var isLoading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var isRecordingAudio by remember { mutableStateOf(false) }
+    var isTranscribingAudio by remember { mutableStateOf(false) }
     var pendingStartRecording by remember { mutableStateOf(false) }
     val voiceNoteRecorder = remember { VoiceNoteRecorder(context.applicationContext) }
     val recordPermissionLauncher = rememberLauncherForActivityResult(
@@ -202,21 +199,43 @@ fun ChatScreen(
                 value = composerText,
                 onValueChange = { composerText = it },
                 isRecordingAudio = isRecordingAudio,
+                isTranscribingAudio = isTranscribingAudio,
                 onRecordAudio = {
+                    if (isTranscribingAudio) {
+                        return@Composer
+                    }
                     if (isRecordingAudio) {
                         runCatching {
                             voiceNoteRecorder.stop()
                         }.onSuccess { audioNote ->
                             isRecordingAudio = false
-                            messages += ChatMessage(
-                                id = "audio-${messages.size + 1}",
-                                authorName = currentUser.displayName,
-                                body = "Voice note",
-                                isFromCurrentUser = true,
-                                timestamp = "Now",
-                                audioNote = audioNote,
-                            )
-                            loadError = null
+                            isTranscribingAudio = true
+                            coroutineScope.launch {
+                                runCatching {
+                                    val transcript = chatRepository.transcribeAudio(
+                                        userId = currentUser.id,
+                                        filePath = audioNote.filePath,
+                                    )
+                                    if (transcript.isBlank()) {
+                                        error("Transcription came back empty")
+                                    }
+                                    chatRepository.sendMessage(
+                                        userId = currentUser.id,
+                                        authorName = currentUser.displayName,
+                                        body = transcript,
+                                    )
+                                }.onSuccess { createdMessage ->
+                                    messages += createdMessage
+                                    loadError = null
+                                }.onFailure { error ->
+                                    Log.e("ChatScreen", "Failed to transcribe voice note", error)
+                                    loadError = error.message ?: "Unable to transcribe recording"
+                                }
+                                runCatching {
+                                    java.io.File(audioNote.filePath).delete()
+                                }
+                                isTranscribingAudio = false
+                            }
                         }.onFailure { error ->
                             Log.e("ChatScreen", "Failed to stop voice note recording", error)
                             voiceNoteRecorder.cancel()
@@ -245,6 +264,9 @@ fun ChatScreen(
                     }
                 },
                 onSend = {
+                    if (isTranscribingAudio) {
+                        return@Composer
+                    }
                     val messageText = composerText.trim()
                     if (messageText.isEmpty()) {
                         return@Composer
@@ -370,9 +392,6 @@ private fun MessageBubble(
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
-                message.audioNote?.let { audioNote ->
-                    AudioNoteCard(audioNote = audioNote)
-                }
                 message.event?.let { event ->
                     EventCard(
                         title = event.title,
@@ -387,81 +406,6 @@ private fun MessageBubble(
                 Text(
                     text = message.timestamp,
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun AudioNoteCard(
-    audioNote: AudioNoteAttachment,
-) {
-    var mediaPlayer by remember(audioNote.filePath) { mutableStateOf<MediaPlayer?>(null) }
-    var isPlaying by remember(audioNote.filePath) { mutableStateOf(false) }
-
-    DisposableEffect(audioNote.filePath) {
-        onDispose {
-            mediaPlayer?.release()
-            mediaPlayer = null
-        }
-    }
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(
-                onClick = {
-                    if (isPlaying) {
-                        mediaPlayer?.pause()
-                        isPlaying = false
-                    } else {
-                        val player = mediaPlayer ?: MediaPlayer().apply {
-                            setDataSource(audioNote.filePath)
-                            prepare()
-                            setOnCompletionListener {
-                                isPlaying = false
-                                seekTo(0)
-                            }
-                        }.also {
-                            mediaPlayer = it
-                        }
-                        player.start()
-                        isPlaying = true
-                    }
-                },
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(38.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause voice note" else "Play voice note",
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                    )
-                }
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = "Voice note",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = formatVoiceNoteDuration(audioNote.durationSeconds),
-                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -593,6 +537,7 @@ private fun Composer(
     value: String,
     onValueChange: (String) -> Unit,
     isRecordingAudio: Boolean,
+    isTranscribingAudio: Boolean,
     onRecordAudio: () -> Unit,
     onSend: () -> Unit,
 ) {
@@ -616,6 +561,8 @@ private fun Composer(
                     Text(
                         if (isRecordingAudio) {
                             "Recording voice note… tap the mic again to stop"
+                        } else if (isTranscribingAudio) {
+                            "Transcribing your voice note…"
                         } else {
                             "Ask about tonight, start a plan, or create an event"
                         },
@@ -623,24 +570,33 @@ private fun Composer(
                 },
                 shape = RoundedCornerShape(24.dp),
                 maxLines = 4,
-                enabled = !isRecordingAudio,
+                enabled = !isRecordingAudio && !isTranscribingAudio,
             )
             Surface(
                 onClick = onRecordAudio,
                 shape = CircleShape,
                 color = if (isRecordingAudio) Color(0xFFB3261E) else MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier.size(42.dp),
+                enabled = !isTranscribingAudio,
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
-                        imageVector = if (isRecordingAudio) Icons.Rounded.RadioButtonChecked else Icons.Rounded.Mic,
-                        contentDescription = if (isRecordingAudio) "Stop recording audio" else "Record audio",
-                        tint = if (isRecordingAudio) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(20.dp),
-                    )
+                    if (isTranscribingAudio) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (isRecordingAudio) Icons.Rounded.RadioButtonChecked else Icons.Rounded.Mic,
+                            contentDescription = if (isRecordingAudio) "Stop recording audio" else "Record audio",
+                            tint = if (isRecordingAudio) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
             }
             Surface(
@@ -648,7 +604,7 @@ private fun Composer(
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(52.dp),
-                enabled = !isRecordingAudio,
+                enabled = !isRecordingAudio && !isTranscribingAudio,
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -663,10 +619,4 @@ private fun Composer(
             }
         }
     }
-}
-
-private fun formatVoiceNoteDuration(totalSeconds: Int): String {
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return "%d:%02d".format(minutes, seconds)
 }

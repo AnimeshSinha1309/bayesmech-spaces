@@ -135,6 +135,11 @@ class ChatMessageCreate(BaseModel):
     content_structured: dict[str, Any] | None = None
 
 
+class AudioTranscriptionResponse(BaseModel):
+    text: str
+    model: str
+
+
 class ProfileAiMessage(BaseModel):
     role: Literal["assistant", "user"]
     text: str

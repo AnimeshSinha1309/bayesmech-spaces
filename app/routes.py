@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from pymongo.errors import DuplicateKeyError
 
 from app.db import db
@@ -9,6 +9,7 @@ from app.profile_ai import (
     start_profile_ai_session,
 )
 from app.models import (
+    AudioTranscriptionResponse,
     ChatMessageCreate,
     DirectMessageCreate,
     EventCreate,
@@ -22,6 +23,7 @@ from app.models import (
     UserPatch,
     UserSignIn,
 )
+from app.transcription import transcribe_audio_bytes
 from app.utils import dm_thread_id, prefixed_id, utc_now
 
 router = APIRouter()
@@ -548,6 +550,17 @@ def get_main_chat(user_id: str) -> dict:
 def create_main_chat_message(user_id: str, payload: ChatMessageCreate) -> dict:
     thread = _get_main_thread_or_404(user_id)
     return _create_chat_message(thread, payload)
+
+
+@router.post("/chat/{user_id}/transcribe", response_model=AudioTranscriptionResponse)
+async def transcribe_main_chat_audio(user_id: str, file: UploadFile = File(...)) -> dict[str, str]:
+    _get_user_or_404(user_id)
+    audio_bytes = await file.read()
+    return transcribe_audio_bytes(
+        filename=file.filename or "voice-note.m4a",
+        content_type=file.content_type,
+        audio_bytes=audio_bytes,
+    )
 
 
 @router.get("/events/{event_id}/chat")
