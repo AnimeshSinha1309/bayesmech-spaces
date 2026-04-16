@@ -6,6 +6,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import spaces.bayesmech.com.data.backend.BackendConfig
 import java.io.BufferedReader
+import java.io.DataOutputStream
+import java.io.File
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
@@ -62,6 +64,56 @@ class ProfileAiApi(
             isComplete = response.getBoolean("is_complete"),
             model = response.getString("model"),
         )
+    }
+
+    suspend fun transcribeAudio(
+        user: CurrentUser,
+        filePath: String,
+    ): String = withContext(Dispatchers.IO) {
+        val audioFile = File(filePath)
+        if (!audioFile.exists()) {
+            throw IllegalStateException("Recorded audio file is missing")
+        }
+
+        val boundary = "SpacesBoundary${System.currentTimeMillis()}"
+        val connection = (URL("$baseUrl/users/${user.id}/profile-ai/transcribe").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            doInput = true
+            doOutput = true
+            connectTimeout = 15000
+            readTimeout = 60000
+            setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+            setRequestProperty("Accept", "application/json")
+        }
+
+        connection.use { safeConnection ->
+            DataOutputStream(safeConnection.outputStream).use { output ->
+                output.writeBytes("--$boundary\r\n")
+                output.writeBytes(
+                    "Content-Disposition: form-data; name=\"file\"; filename=\"${audioFile.name}\"\r\n",
+                )
+                output.writeBytes("Content-Type: audio/mp4\r\n\r\n")
+                audioFile.inputStream().use { input ->
+                    input.copyTo(output)
+                }
+                output.writeBytes("\r\n--$boundary--\r\n")
+                output.flush()
+            }
+
+            val stream = if (safeConnection.responseCode in 200..299) {
+                safeConnection.inputStream
+            } else {
+                safeConnection.errorStream
+            }
+            val responseText = BufferedReader(stream.reader()).use { it.readText() }
+            if (safeConnection.responseCode !in 200..299) {
+                throw IllegalStateException(
+                    JSONObject(responseText).optString("detail")
+                        .ifBlank { "Profile AI transcription failed with ${safeConnection.responseCode}" },
+                )
+            }
+            JSONObject(responseText).getString("text").trim()
+        }
     }
 
     private suspend fun postTurn(

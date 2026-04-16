@@ -301,6 +301,17 @@ def reply_profile_ai(user_id: str, payload: ProfileAiTurnRequest) -> dict:
     )
 
 
+@router.post("/users/{user_id}/profile-ai/transcribe", response_model=AudioTranscriptionResponse)
+async def transcribe_profile_ai_audio(user_id: str, file: UploadFile = File(...)) -> dict[str, str]:
+    _get_user_or_404(user_id)
+    audio_bytes = await file.read()
+    return transcribe_audio_bytes(
+        filename=file.filename or "profile-ai.m4a",
+        content_type=file.content_type,
+        audio_bytes=audio_bytes,
+    )
+
+
 @router.post("/users/{user_id}/profile-ai/end", response_model=ProfileAiEndResponse)
 def end_profile_ai(user_id: str, payload: ProfileAiTurnRequest) -> dict:
     user = db.users.find_one({"_id": user_id}, {"display_name": 1})
