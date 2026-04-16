@@ -56,6 +56,7 @@ import spaces.bayesmech.com.ui.screens.ConversationScreen
 import spaces.bayesmech.com.ui.screens.ContentScreen
 import spaces.bayesmech.com.ui.screens.PlaceholderScreen
 import spaces.bayesmech.com.ui.screens.ProfileScreen
+import spaces.bayesmech.com.ui.screens.SignupsScreen
 
 @Composable
 fun SpacesApp(
@@ -164,7 +165,7 @@ fun SpacesApp(
                         onOpenEventChat = { event: ChatEvent ->
                             drawerScope.launch {
                                 runCatching {
-                                    repository.getEventChat(event.eventId, resolvedCurrentUser.id)
+                                    repository.getEventChat(event.id, resolvedCurrentUser.id)
                                 }.onSuccess { thread ->
                                     activeConversation = thread
                                     navigateTo(AppDestination.Conversation)
@@ -189,10 +190,21 @@ fun SpacesApp(
                     )
                 }
                 composable(AppDestination.Signups.route) {
-                    PlaceholderScreen(
-                        title = "Signups",
-                        description = "Review the events you've RSVP'd to and keep upcoming plans in one place.",
-                        onBack = { navController.popBackStack() },
+                    SignupsScreen(
+                        chatRepository = repository,
+                        currentUser = resolvedCurrentUser,
+                        onOpenEventChat = { event ->
+                            drawerScope.launch {
+                                runCatching {
+                                    repository.getEventChat(event.id, resolvedCurrentUser.id)
+                                }.onSuccess { thread ->
+                                    activeConversation = thread
+                                    navigateTo(AppDestination.Conversation)
+                                }.onFailure { error ->
+                                    Log.e("SpacesApp", "Failed to open signup event chat", error)
+                                }
+                            }
+                        },
                     )
                 }
                 composable(AppDestination.Content.route) {

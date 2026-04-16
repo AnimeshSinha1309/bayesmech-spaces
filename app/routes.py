@@ -3,7 +3,7 @@ from pymongo.errors import DuplicateKeyError
 
 from app.community import backfill_profile_embeddings, rank_community_candidates, refresh_profile_embedding_for_user
 from app.db import db
-from app.matching import score_profiles, score_user_for_event
+from app.matching import build_event_payload, score_profiles, score_user_for_event, select_events_for_query
 from app.profile_ai import (
     continue_profile_ai_session,
     end_profile_ai_session,
@@ -123,6 +123,111 @@ def _get_event_context(event_id: str) -> tuple[dict, dict | None, list[dict], se
     attendee_ids = {membership["user_id"] for membership in memberships}
     attendees = list(db.users.find({"_id": {"$in": list(attendee_ids)}})) if attendee_ids else []
     return event, creator, attendees, attendee_ids
+
+
+def _build_event_card_payload(event: dict, creator: dict | None, attendees: list[dict]) -> dict:
+    location = event.get("location", {})
+    timing = event.get("timing", {})
+    attendee_cards = [
+        {
+            "display_name": attendee.get("display_name", attendee.get("_id")),
+            "avatar_url": attendee.get("avatar_url"),
+        }
+        for attendee in attendees[:3]
+    ]
+    return {
+        "card_type": "event_card",
+        "event": {
+            "event_id": event["_id"],
+            "title": event.get("title"),
+            "location_name": location.get("location_name") or location.get("name", ""),
+            "maps_url": location.get("maps_url", ""),
+            "description": event.get("description", ""),
+            "attendees": attendee_cards,
+            "attendee_count": event.get("attendance", {}).get("attendee_count", len(attendees)),
+            "start_label": timing.get("label", ""),
+            "category_tags": event.get("category_tags", []),
+            "creator_name": creator.get("display_name") if creator else None,
+        }
+    }
+
+
+def _build_event_search_candidates() -> list[dict]:
+    candidates = []
+    for event in db.events.find({"status": "published"}):
+        creator, attendees = None, []
+        if event.get("creator_user_id"):
+            creator = db.users.find_one({"_id": event["creator_user_id"]})
+        memberships = list(db.event_memberships.find({"event_id": event["_id"], "rsvp_status": "joined"}))
+        attendee_ids = [membership["user_id"] for membership in memberships]
+        if attendee_ids:
+            attendees = list(db.users.find({"_id": {"$in": attendee_ids}}))
+        candidates.append(build_event_payload(event, creator, attendees))
+    return candidates
+
+
+def _build_chat_search_response(user_id: str, thread: dict, query: str) -> dict:
+    user = _get_user_or_404(user_id)
+    user_message = _create_chat_message(thread, ChatMessageCreate(
+        sender_type="user",
+        sender_user_id=user_id,
+        message_type="text",
+        content_text=query,
+        content_structured=None,
+    ))
+    candidates = _build_event_search_candidates()
+    search_result = select_events_for_query(user=user, query=query, events=candidates)
+    matched_event_ids = search_result.get("matched_event_ids", [])
+
+    assistant_messages = []
+    assistant_text = search_result.get("response_text", "").strip()
+    if matched_event_ids:
+        if not assistant_text:
+            assistant_text = "Here are the events that look most relevant."
+        assistant_messages.append(
+            _create_chat_message(
+                thread,
+                ChatMessageCreate(
+                    sender_type="assistant",
+                    sender_user_id=None,
+                    message_type="text",
+                    content_text=assistant_text,
+                    content_structured=None,
+                ),
+            )
+        )
+        for event_id in matched_event_ids[:3]:
+            event, creator, attendees, _ = _get_event_context(event_id)
+            assistant_messages.append(
+                _create_chat_message(
+                    thread,
+                    ChatMessageCreate(
+                        sender_type="assistant",
+                        sender_user_id=None,
+                        message_type="event_card",
+                        content_text="",
+                        content_structured=_build_event_card_payload(event, creator, attendees),
+                    ),
+                )
+            )
+    else:
+        assistant_messages.append(
+            _create_chat_message(
+                thread,
+                ChatMessageCreate(
+                    sender_type="assistant",
+                    sender_user_id=None,
+                    message_type="text",
+                    content_text="Nothing seems to match that. Do you want to host something yourself? Use /create to host.",
+                    content_structured=None,
+                ),
+            )
+        )
+
+    return {
+        "user_message": user_message,
+        "messages": assistant_messages,
+    }
 
 
 def _serialize_profile_ai_transcript(messages: list) -> list[dict[str, str]]:
@@ -506,6 +611,8 @@ def join_event(event_id: str, payload: EventMembershipCreate) -> dict:
         raise HTTPException(status_code=404, detail="event or user not found")
 
     now = utc_now()
+    existing_membership = db.event_memberships.find_one({"event_id": event_id, "user_id": payload.user_id})
+    was_joined = existing_membership and existing_membership.get("rsvp_status") == "joined"
     db.event_memberships.update_one(
         {"event_id": event_id, "user_id": payload.user_id},
         {
@@ -533,10 +640,14 @@ def join_event(event_id: str, payload: EventMembershipCreate) -> dict:
         {"_id": event_id},
         {
             "$addToSet": {"chat.participant_user_ids": payload.user_id},
-            "$inc": {"attendance.attendee_count": 1, "attendance.confirmed_count": 1},
             "$set": {"updated_at": now},
         },
     )
+    if not was_joined and payload.rsvp_status == "joined":
+        db.events.update_one(
+            {"_id": event_id},
+            {"$inc": {"attendance.attendee_count": 1, "attendance.confirmed_count": 1}},
+        )
     db.chat_threads.update_one(
         {"_id": event["chat"]["thread_id"]},
         {
@@ -557,7 +668,20 @@ def get_user_events(user_id: str) -> dict:
 
 @router.get("/events/{event_id}/attendees")
 def get_event_attendees(event_id: str) -> list[dict]:
-    return list(db.event_memberships.find({"event_id": event_id}, {"_id": 0}))
+    memberships = list(db.event_memberships.find({"event_id": event_id}, {"_id": 0}))
+    user_ids = [membership["user_id"] for membership in memberships]
+    users = {
+        user["_id"]: user
+        for user in db.users.find({"_id": {"$in": user_ids}}, {"display_name": 1, "avatar_url": 1})
+    } if user_ids else {}
+    return [
+        {
+            **membership,
+            "display_name": users.get(membership["user_id"], {}).get("display_name", membership["user_id"]),
+            "avatar_url": users.get(membership["user_id"], {}).get("avatar_url"),
+        }
+        for membership in memberships
+    ]
 
 
 def _create_chat_message(thread: dict, payload: ChatMessageCreate) -> dict:
@@ -612,6 +736,10 @@ def get_main_chat(user_id: str) -> dict:
 @router.post("/chat/{user_id}/messages")
 def create_main_chat_message(user_id: str, payload: ChatMessageCreate) -> dict:
     thread = _get_main_thread_or_404(user_id)
+    if payload.sender_type == "user" and payload.message_type == "text":
+        content_text = (payload.content_text or "").strip()
+        if content_text and content_text != "/create":
+            return _build_chat_search_response(user_id, thread, content_text)
     return _create_chat_message(thread, payload)
 
 
