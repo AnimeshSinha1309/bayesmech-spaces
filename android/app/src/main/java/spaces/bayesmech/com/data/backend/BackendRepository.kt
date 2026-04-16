@@ -45,6 +45,22 @@ class BackendRepository(
         }
     }
 
+    override suspend fun signInWithUsername(username: String): CurrentUser {
+        return withContext(Dispatchers.IO) {
+            val requestJson = JSONObject()
+                .put("username", username.trim())
+            val request = Request.Builder()
+                .url("${BackendConfig.baseUrl}/auth/username")
+                .post(requestJson.toString().toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            val responseJson = executeJsonRequest(request)
+            parseCurrentUser(responseJson).also {
+                cachedBootstrap = null
+                cachedCommunityByUserId.clear()
+            }
+        }
+    }
+
     override suspend fun getMessages(userId: String): List<ChatMessage> {
         return withContext(Dispatchers.IO) {
             loadBootstrap(userId).messages
@@ -256,15 +272,16 @@ class BackendRepository(
         }
     }
 
-    override suspend fun rsvpToEvent(
+    override suspend fun setEventRsvp(
         userId: String,
         eventId: String,
+        isRsvped: Boolean,
     ) {
         return withContext(Dispatchers.IO) {
             val requestJson = JSONObject()
                 .put("user_id", userId)
                 .put("role", "attendee")
-                .put("rsvp_status", "joined")
+                .put("rsvp_status", if (isRsvped) "joined" else "left")
                 .put("discovery_source", "direct_chat")
 
             val request = Request.Builder()

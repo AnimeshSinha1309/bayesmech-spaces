@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -53,6 +54,7 @@ import spaces.bayesmech.com.ui.components.AvatarImage
 fun ProfileScreen(
     currentUser: CurrentUser,
     onTalkToAi: () -> Unit,
+    onLogout: () -> Unit,
     onBack: () -> Unit,
 ) {
     Scaffold(
@@ -75,10 +77,23 @@ fun ProfileScreen(
                     }
                 },
                 actions = {
-                    TalkToAiButton(
-                        onClick = onTalkToAi,
-                        modifier = Modifier.padding(end = 8.dp),
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TalkToAiButton(
+                            onClick = onTalkToAi,
+                        )
+                        IconButton(
+                            onClick = onLogout,
+                            modifier = Modifier.padding(end = 8.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Logout,
+                                contentDescription = "Log out",
+                            )
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,

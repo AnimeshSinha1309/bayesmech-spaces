@@ -18,9 +18,10 @@ interface ChatRepository {
         draft: EventDraft,
     ): ChatMessage
 
-    suspend fun rsvpToEvent(
+    suspend fun setEventRsvp(
         userId: String,
         eventId: String,
+        isRsvped: Boolean,
     )
 
     suspend fun transcribeAudio(
@@ -31,6 +32,7 @@ interface ChatRepository {
 
 interface CurrentUserRepository {
     suspend fun getCurrentUser(userId: String): CurrentUser
+    suspend fun signInWithUsername(username: String): CurrentUser
 }
 
 interface CommunityRepository {

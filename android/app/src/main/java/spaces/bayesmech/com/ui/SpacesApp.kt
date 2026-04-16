@@ -1,6 +1,7 @@
 package spaces.bayesmech.com.ui
 
 import android.util.Log
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,6 +48,7 @@ import spaces.bayesmech.com.data.AppRepositories
 import spaces.bayesmech.com.data.ChatEvent
 import spaces.bayesmech.com.data.ConversationThread
 import spaces.bayesmech.com.data.CurrentUser
+import spaces.bayesmech.com.data.UserSessionStore
 import spaces.bayesmech.com.data.backend.BackendConfig
 import spaces.bayesmech.com.ui.navigation.AppDestination
 import spaces.bayesmech.com.ui.screens.AiChatScreen
@@ -54,6 +56,7 @@ import spaces.bayesmech.com.ui.screens.ChatScreen
 import spaces.bayesmech.com.ui.screens.CommunityScreen
 import spaces.bayesmech.com.ui.screens.ConversationScreen
 import spaces.bayesmech.com.ui.screens.ContentScreen
+import spaces.bayesmech.com.ui.screens.LoginScreen
 import spaces.bayesmech.com.ui.screens.PlaceholderScreen
 import spaces.bayesmech.com.ui.screens.ProfileScreen
 import spaces.bayesmech.com.ui.screens.SignupsScreen
@@ -63,19 +66,29 @@ fun SpacesApp(
     openContentSignal: Int = 0,
     sharedFromLabel: String? = null,
 ) {
+    val context = LocalContext.current
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
+    val appScope = rememberCoroutineScope()
     val repository = remember { AppRepositories.backendRepository }
     val sharedContentRepository = remember { AppRepositories.sharedContentRepository }
+    val sessionStore = remember { UserSessionStore(context.applicationContext) }
     val profileAiApi = remember { ProfileAiApi() }
     var currentUser by remember { mutableStateOf<CurrentUser?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var activeConversation by remember { mutableStateOf<ConversationThread?>(null) }
+    var activeUserId by remember { mutableStateOf(sessionStore.getUserId()) }
+    var isLoggingIn by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(activeUserId) {
+        if (activeUserId == null) {
+            currentUser = null
+            loadError = null
+            return@LaunchedEffect
+        }
         runCatching {
-            repository.getCurrentUser(BackendConfig.currentUserId)
+            repository.getCurrentUser(activeUserId!!)
         }.onSuccess { user ->
             currentUser = user
             loadError = null
@@ -83,6 +96,32 @@ fun SpacesApp(
             Log.e("SpacesApp", "Failed to load current user from backend", error)
             loadError = error.message ?: "Unable to connect to backend"
         }
+    }
+
+    if (activeUserId == null) {
+        LoginScreen(
+            isLoading = isLoggingIn,
+            error = loadError,
+            onLogin = { username, _ ->
+                appScope.launch {
+                    isLoggingIn = true
+                    loadError = null
+                    activeConversation = null
+                    runCatching {
+                        repository.signInWithUsername(username)
+                    }.onSuccess { user ->
+                        sessionStore.setUserId(user.id)
+                        activeUserId = user.id
+                        currentUser = user
+                    }.onFailure { error ->
+                        Log.e("SpacesApp", "Failed to sign in with username", error)
+                        loadError = error.message ?: "Unable to sign in"
+                    }
+                    isLoggingIn = false
+                }
+            },
+        )
+        return
     }
 
     val resolvedCurrentUser = currentUser
@@ -222,6 +261,12 @@ fun SpacesApp(
                     ProfileScreen(
                         currentUser = resolvedCurrentUser,
                         onTalkToAi = { navigateTo(AppDestination.ProfileAi) },
+                        onLogout = {
+                            sessionStore.clear()
+                            activeConversation = null
+                            currentUser = null
+                            activeUserId = null
+                        },
                         onBack = { navController.popBackStack() },
                     )
                 }

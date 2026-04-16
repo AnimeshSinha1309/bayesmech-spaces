@@ -39,6 +39,10 @@ class UserSignIn(BaseModel):
     password: str
 
 
+class UsernameSignIn(BaseModel):
+    username: str
+
+
 class UserPatch(BaseModel):
     display_name: str | None = None
     username: str | None = None
