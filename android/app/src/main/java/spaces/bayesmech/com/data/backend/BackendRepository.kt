@@ -15,6 +15,7 @@ import spaces.bayesmech.com.data.ChatMessage
 import spaces.bayesmech.com.data.ChatRepository
 import spaces.bayesmech.com.data.CurrentUser
 import spaces.bayesmech.com.data.CurrentUserRepository
+import spaces.bayesmech.com.data.EventDraft
 import spaces.bayesmech.com.data.EventAttendee
 import spaces.bayesmech.com.data.InterestEntry
 import spaces.bayesmech.com.data.JourneyEntry
@@ -44,6 +45,44 @@ class BackendRepository(
         }
     }
 
+    override suspend fun getSignupEvents(userId: String): List<ChatEvent> {
+        return withContext(Dispatchers.IO) {
+            val userEventsRequest = Request.Builder()
+                .url("${BackendConfig.baseUrl}/users/$userId/events")
+                .get()
+                .build()
+            val eventRefsJson = executeJsonRequest(userEventsRequest)
+            val hostedEventIds = eventRefsJson.optJSONArray("hosted_event_ids")
+                ?.toStringList()
+                ?.distinct()
+                ?: emptyList()
+            val joinedEventIds = eventRefsJson.optJSONArray("joined_event_ids")
+                ?.toStringList()
+                ?.distinct()
+                ?: emptyList()
+            val signupEventIds = (hostedEventIds + joinedEventIds).distinct()
+
+            signupEventIds.mapNotNull { eventId ->
+                val eventRequest = Request.Builder()
+                    .url("${BackendConfig.baseUrl}/events/$eventId")
+                    .get()
+                    .build()
+                val attendeesRequest = Request.Builder()
+                    .url("${BackendConfig.baseUrl}/events/$eventId/attendees")
+                    .get()
+                    .build()
+
+                val eventJson = executeJsonRequest(eventRequest)
+                val attendeeMemberships = executeJsonArrayRequest(attendeesRequest)
+                buildChatEvent(
+                    eventJson = eventJson,
+                    attendeeMemberships = attendeeMemberships,
+                    isHostedByCurrentUser = hostedEventIds.contains(eventId),
+                )
+            }
+        }
+    }
+
     override suspend fun sendMessage(
         userId: String,
         authorName: String,
@@ -66,6 +105,74 @@ class BackendRepository(
             val message = parseChatMessage(responseJson, userId, currentUser.displayName)
             cachedBootstrap = cachedBootstrap?.copy(messages = cachedBootstrap!!.messages + message)
             message
+        }
+    }
+
+    override suspend fun createEvent(
+        userId: String,
+        draft: EventDraft,
+    ): ChatMessage {
+        return withContext(Dispatchers.IO) {
+            val currentUser = cachedBootstrap?.currentUser ?: loadBootstrap(userId).currentUser
+            val requestJson = JSONObject()
+                .put("creator_user_id", userId)
+                .put("title", draft.title)
+                .put("description", draft.description)
+                .put("category_tags", JSONArray(draft.categoryTags))
+                .put("visibility_type", draft.visibilityType)
+                .put(
+                    "timing",
+                    JSONObject()
+                        .put("start_time", draft.startsAtIso)
+                        .put("end_time", draft.endsAtIso),
+                )
+                .put(
+                    "location",
+                    JSONObject()
+                        .put("location_name", draft.locationName)
+                        .put("maps_url", draft.mapsUrl),
+                )
+                .put(
+                    "capacity",
+                    JSONObject().apply {
+                        draft.capacityMax?.let { put("max_attendees", it) }
+                    },
+                )
+
+            val createEventRequest = Request.Builder()
+                .url("${BackendConfig.baseUrl}/events")
+                .post(requestJson.toString().toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            val eventJson = executeJsonRequest(createEventRequest)
+            val eventCardMessage = buildEventCardMessage(userId, currentUser.displayName, eventJson)
+
+            val chatMessageRequest = Request.Builder()
+                .url("${BackendConfig.baseUrl}/chat/$userId/messages")
+                .post(eventCardMessage.toString().toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            val responseJson = executeJsonRequest(chatMessageRequest)
+            val message = parseChatMessage(responseJson, userId, currentUser.displayName)
+            cachedBootstrap = cachedBootstrap?.copy(messages = cachedBootstrap!!.messages + message)
+            message
+        }
+    }
+
+    override suspend fun rsvpToEvent(
+        userId: String,
+        eventId: String,
+    ) {
+        return withContext(Dispatchers.IO) {
+            val requestJson = JSONObject()
+                .put("user_id", userId)
+                .put("role", "attendee")
+                .put("rsvp_status", "joined")
+                .put("discovery_source", "direct_chat")
+
+            val request = Request.Builder()
+                .url("${BackendConfig.baseUrl}/events/$eventId/join")
+                .post(requestJson.toString().toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            executeJsonRequest(request)
         }
     }
 
@@ -198,13 +305,79 @@ class BackendRepository(
             .toAttendees()
         val attendeeCount = eventJson.optInt("attendee_count", attendees.size)
         return ChatEvent(
+            id = eventJson.optString("event_id"),
             title = eventJson.optString("title"),
             locationName = eventJson.optString("location_name"),
             mapsUrl = eventJson.optString("maps_url"),
             description = eventJson.optString("description"),
             attendees = attendees,
             additionalAttendeeCount = (attendeeCount - attendees.size).coerceAtLeast(0),
+            startLabel = eventJson.optString("start_label"),
+            categoryTags = eventJson.optJSONArray("category_tags")?.toStringList() ?: emptyList(),
         )
+    }
+
+    private fun buildChatEvent(
+        eventJson: JSONObject,
+        attendeeMemberships: JSONArray,
+        isHostedByCurrentUser: Boolean = false,
+    ): ChatEvent {
+        val startTime = eventJson
+            .optJSONObject("timing")
+            ?.optString("start_time")
+            .orEmpty()
+        val attendeeCount = eventJson
+            .optJSONObject("attendance")
+            ?.optInt("attendee_count")
+            ?: attendeeMemberships.length()
+        return ChatEvent(
+            id = eventJson.optString("_id"),
+            title = eventJson.optString("title"),
+            locationName = eventJson.optJSONObject("location")?.optString("location_name").orEmpty(),
+            mapsUrl = eventJson.optJSONObject("location")?.optString("maps_url").orEmpty(),
+            description = eventJson.optString("description"),
+            attendees = attendeeMemberships.toMembershipAttendees(),
+            additionalAttendeeCount = (attendeeCount - attendeeMemberships.length()).coerceAtLeast(0),
+            startLabel = formatEventStart(startTime),
+            categoryTags = eventJson.optJSONArray("category_tags")?.toStringList() ?: emptyList(),
+            isHostedByCurrentUser = isHostedByCurrentUser,
+        )
+    }
+
+    private fun buildEventCardMessage(
+        userId: String,
+        currentUserName: String,
+        eventJson: JSONObject,
+    ): JSONObject {
+        val eventCardJson = JSONObject()
+            .put("card_type", "event_card")
+            .put(
+                "event",
+                JSONObject()
+                    .put("event_id", eventJson.optString("_id"))
+                    .put("title", eventJson.optString("title"))
+                    .put("location_name", eventJson.optJSONObject("location")?.optString("location_name").orEmpty())
+                    .put("maps_url", eventJson.optJSONObject("location")?.optString("maps_url").orEmpty())
+                    .put("description", eventJson.optString("description"))
+                    .put(
+                        "attendees",
+                        JSONArray().put(
+                            JSONObject()
+                                .put("display_name", currentUserName)
+                                .put("avatar_url", JSONObject.NULL),
+                        ),
+                    )
+                    .put("attendee_count", eventJson.optJSONObject("attendance")?.optInt("attendee_count") ?: 1)
+                    .put("start_label", formatEventStart(eventJson.optJSONObject("timing")?.optString("start_time").orEmpty()))
+                    .put("category_tags", eventJson.optJSONArray("category_tags") ?: JSONArray()),
+            )
+
+        return JSONObject()
+            .put("sender_type", "assistant")
+            .put("sender_user_id", userId)
+            .put("message_type", "event_card")
+            .put("content_text", "Event created. Here is your card.")
+            .put("content_structured", eventCardJson)
     }
 
     private fun executeJsonRequest(request: Request): JSONObject {
@@ -215,6 +388,17 @@ class BackendRepository(
             val body = response.body?.string()
                 ?: throw IOException("Empty response body")
             return JSONObject(body)
+        }
+    }
+
+    private fun executeJsonArrayRequest(request: Request): JSONArray {
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("Request failed with ${response.code}")
+            }
+            val body = response.body?.string()
+                ?: throw IOException("Empty response body")
+            return JSONArray(body)
         }
     }
 
@@ -269,11 +453,49 @@ class BackendRepository(
         }
     }
 
+    private fun JSONArray?.toMembershipAttendees(): List<EventAttendee> {
+        if (this == null) {
+            return emptyList()
+        }
+        return buildList {
+            for (index in 0 until minOf(length(), 3)) {
+                val item = optJSONObject(index) ?: continue
+                add(
+                    EventAttendee(
+                        displayName = item.optString("display_name", item.optString("user_id")),
+                        avatarUrl = item.optNullableString("avatar_url"),
+                    )
+                )
+            }
+        }
+    }
+
+    private fun JSONArray.toStringList(): List<String> {
+        return buildList {
+            for (index in 0 until length()) {
+                val value = optString(index)
+                if (value.isNotBlank()) {
+                    add(value)
+                }
+            }
+        }
+    }
+
     private fun formatTimestamp(isoTimestamp: String): String {
         if (isoTimestamp.isBlank()) {
             return ""
         }
         val formatter = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
+        return Instant.parse(isoTimestamp)
+            .atZone(ZoneId.systemDefault())
+            .format(formatter)
+    }
+
+    private fun formatEventStart(isoTimestamp: String): String {
+        if (isoTimestamp.isBlank()) {
+            return ""
+        }
+        val formatter = DateTimeFormatter.ofPattern("EEE, MMM d • h:mm a", Locale.US)
         return Instant.parse(isoTimestamp)
             .atZone(ZoneId.systemDefault())
             .format(formatter)

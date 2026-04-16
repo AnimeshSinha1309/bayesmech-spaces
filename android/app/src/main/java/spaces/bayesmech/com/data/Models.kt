@@ -39,12 +39,16 @@ data class AudioNoteAttachment(
 )
 
 data class ChatEvent(
+    val id: String,
     val title: String,
     val locationName: String,
     val mapsUrl: String,
     val description: String,
     val attendees: List<EventAttendee>,
     val additionalAttendeeCount: Int = 0,
+    val startLabel: String = "",
+    val categoryTags: List<String> = emptyList(),
+    val isHostedByCurrentUser: Boolean = false,
 )
 
 data class EventAttendee(

@@ -474,6 +474,8 @@ def join_event(event_id: str, payload: EventMembershipCreate) -> dict:
         raise HTTPException(status_code=404, detail="event or user not found")
 
     now = utc_now()
+    existing_membership = db.event_memberships.find_one({"event_id": event_id, "user_id": payload.user_id})
+    was_joined = existing_membership and existing_membership.get("rsvp_status") == "joined"
     db.event_memberships.update_one(
         {"event_id": event_id, "user_id": payload.user_id},
         {
@@ -501,10 +503,14 @@ def join_event(event_id: str, payload: EventMembershipCreate) -> dict:
         {"_id": event_id},
         {
             "$addToSet": {"chat.participant_user_ids": payload.user_id},
-            "$inc": {"attendance.attendee_count": 1, "attendance.confirmed_count": 1},
             "$set": {"updated_at": now},
         },
     )
+    if not was_joined and payload.rsvp_status == "joined":
+        db.events.update_one(
+            {"_id": event_id},
+            {"$inc": {"attendance.attendee_count": 1, "attendance.confirmed_count": 1}},
+        )
     db.chat_threads.update_one(
         {"_id": event["chat"]["thread_id"]},
         {
@@ -525,7 +531,20 @@ def get_user_events(user_id: str) -> dict:
 
 @router.get("/events/{event_id}/attendees")
 def get_event_attendees(event_id: str) -> list[dict]:
-    return list(db.event_memberships.find({"event_id": event_id}, {"_id": 0}))
+    memberships = list(db.event_memberships.find({"event_id": event_id}, {"_id": 0}))
+    user_ids = [membership["user_id"] for membership in memberships]
+    users = {
+        user["_id"]: user
+        for user in db.users.find({"_id": {"$in": user_ids}}, {"display_name": 1, "avatar_url": 1})
+    } if user_ids else {}
+    return [
+        {
+            **membership,
+            "display_name": users.get(membership["user_id"], {}).get("display_name", membership["user_id"]),
+            "avatar_url": users.get(membership["user_id"], {}).get("avatar_url"),
+        }
+        for membership in memberships
+    ]
 
 
 def _create_chat_message(thread: dict, payload: ChatMessageCreate) -> dict:

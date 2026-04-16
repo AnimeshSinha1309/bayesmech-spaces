@@ -52,6 +52,7 @@ import spaces.bayesmech.com.ui.screens.ChatScreen
 import spaces.bayesmech.com.ui.screens.ContentScreen
 import spaces.bayesmech.com.ui.screens.PlaceholderScreen
 import spaces.bayesmech.com.ui.screens.ProfileScreen
+import spaces.bayesmech.com.ui.screens.SignupsScreen
 
 @Composable
 fun SpacesApp(
@@ -168,10 +169,10 @@ fun SpacesApp(
                     )
                 }
                 composable(AppDestination.Signups.route) {
-                    PlaceholderScreen(
-                        title = "Signups",
-                        description = "Review the events you've RSVP'd to and keep upcoming plans in one place.",
-                        onBack = { navController.popBackStack() },
+                    SignupsScreen(
+                        chatRepository = repository,
+                        currentUser = resolvedCurrentUser,
+                        onOpenEventChat = { navigateTo(AppDestination.EventChat) },
                     )
                 }
                 composable(AppDestination.Content.route) {

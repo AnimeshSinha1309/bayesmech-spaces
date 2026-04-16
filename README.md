@@ -143,6 +143,7 @@ Local setup:
 
 ```bash
 cp .env.example .env
+docker compose -f app/docker-compose.yml up -d
 uv sync
 uv run uvicorn app.main:app --reload
 ```
