@@ -87,7 +87,7 @@ class BackendRepository(
         userId: String,
         authorName: String,
         body: String,
-    ): ChatMessage {
+    ): List<ChatMessage> {
         return withContext(Dispatchers.IO) {
             val requestJson = JSONObject()
                 .put("sender_type", "user")
@@ -102,9 +102,18 @@ class BackendRepository(
 
             val responseJson = executeJsonRequest(request)
             val currentUser = cachedBootstrap?.currentUser ?: loadBootstrap(userId).currentUser
-            val message = parseChatMessage(responseJson, userId, currentUser.displayName)
-            cachedBootstrap = cachedBootstrap?.copy(messages = cachedBootstrap!!.messages + message)
-            message
+            val messagesJson = responseJson.optJSONArray("messages")
+            val messages = if (messagesJson != null) {
+                buildList {
+                    for (index in 0 until messagesJson.length()) {
+                        add(parseChatMessage(messagesJson.getJSONObject(index), userId, currentUser.displayName))
+                    }
+                }
+            } else {
+                listOf(parseChatMessage(responseJson, userId, currentUser.displayName))
+            }
+            cachedBootstrap = cachedBootstrap?.copy(messages = cachedBootstrap!!.messages + messages)
+            messages
         }
     }
 

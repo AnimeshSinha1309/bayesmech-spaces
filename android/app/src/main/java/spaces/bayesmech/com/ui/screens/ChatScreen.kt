@@ -244,97 +244,6 @@ fun ChatScreen(
                 },
             )
         },
-        bottomBar = {
-            Composer(
-                value = composerText,
-                onValueChange = { composerText = it },
-                isRecordingAudio = isRecordingAudio,
-                isTranscribingAudio = isTranscribingAudio,
-                onRecordAudio = {
-                    if (isTranscribingAudio) return@Composer
-                    if (isRecordingAudio) {
-                        runCatching { voiceNoteRecorder.stop() }
-                            .onSuccess { audioNote ->
-                                isRecordingAudio = false
-                                isTranscribingAudio = true
-                                coroutineScope.launch {
-                                    runCatching {
-                                        val transcript = chatRepository.transcribeAudio(
-                                            userId = currentUser.id,
-                                            filePath = audioNote.filePath,
-                                        )
-                                        if (transcript.isBlank()) error("Transcription came back empty")
-                                        chatRepository.sendMessage(
-                                            userId = currentUser.id,
-                                            authorName = currentUser.displayName,
-                                            body = transcript,
-                                        )
-                                    }.onSuccess { createdMessage ->
-                                        messages += createdMessage
-                                        loadError = null
-                                    }.onFailure { error ->
-                                        Log.e("ChatScreen", "Failed to transcribe voice note", error)
-                                        loadError = error.message ?: "Unable to transcribe recording"
-                                    }
-                                    runCatching { java.io.File(audioNote.filePath).delete() }
-                                    isTranscribingAudio = false
-                                }
-                            }
-                            .onFailure { error ->
-                                Log.e("ChatScreen", "Failed to stop voice note recording", error)
-                                voiceNoteRecorder.cancel()
-                                isRecordingAudio = false
-                                loadError = error.message ?: "Unable to finish recording"
-                            }
-                    } else {
-                        val permissionState = ContextCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.RECORD_AUDIO,
-                        )
-                        if (permissionState == PackageManager.PERMISSION_GRANTED) {
-                            runCatching { voiceNoteRecorder.start() }
-                                .onSuccess {
-                                    isRecordingAudio = true
-                                    loadError = null
-                                }
-                                .onFailure { error ->
-                                    Log.e("ChatScreen", "Failed to start voice note recording", error)
-                                    loadError = error.message ?: "Unable to start recording"
-                                }
-                        } else {
-                            pendingStartRecording = true
-                            recordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                        }
-                    }
-                },
-                onSend = {
-                    if (isTranscribingAudio) return@Composer
-                    val messageText = composerText.trim()
-                    if (messageText.isEmpty()) return@Composer
-                    if (messageText == "/create") {
-                        showCreateDialog = true
-                        composerText = ""
-                        return@Composer
-                    }
-                    coroutineScope.launch {
-                        runCatching {
-                            chatRepository.sendMessage(
-                                userId = currentUser.id,
-                                authorName = currentUser.displayName,
-                                body = messageText,
-                            )
-                        }.onSuccess { createdMessage ->
-                            messages += createdMessage
-                            composerText = ""
-                            loadError = null
-                        }.onFailure { error ->
-                            Log.e("ChatScreen", "Failed to send message", error)
-                            loadError = error.message ?: "Unable to send message"
-                        }
-                    }
-                },
-            )
-        },
     ) { innerPadding ->
         Box(
             modifier = Modifier
@@ -346,7 +255,7 @@ fun ChatScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 16.dp),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 12.dp),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 104.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 item {
@@ -408,6 +317,115 @@ fun ChatScreen(
                     )
                 }
             }
+            Composer(
+                value = composerText,
+                onValueChange = { composerText = it },
+                isRecordingAudio = isRecordingAudio,
+                isTranscribingAudio = isTranscribingAudio,
+                onRecordAudio = {
+                    if (isTranscribingAudio) return@Composer
+                    if (isRecordingAudio) {
+                        runCatching { voiceNoteRecorder.stop() }
+                            .onSuccess { audioNote ->
+                                isRecordingAudio = false
+                                isTranscribingAudio = true
+                                coroutineScope.launch {
+                                    var optimisticMessage: ChatMessage? = null
+                                    runCatching {
+                                        val transcript = chatRepository.transcribeAudio(
+                                            userId = currentUser.id,
+                                            filePath = audioNote.filePath,
+                                        )
+                                        if (transcript.isBlank()) error("Transcription came back empty")
+                                        optimisticMessage = ChatMessage(
+                                            id = "local-${System.nanoTime()}",
+                                            authorName = currentUser.displayName,
+                                            body = transcript,
+                                            isFromCurrentUser = true,
+                                            timestamp = "Now",
+                                        )
+                                        messages += optimisticMessage!!
+                                        chatRepository.sendMessage(
+                                            userId = currentUser.id,
+                                            authorName = currentUser.displayName,
+                                            body = transcript,
+                                        )
+                                    }.onSuccess { createdMessages ->
+                                        messages += createdMessages
+                                        loadError = null
+                                    }.onFailure { error ->
+                                        Log.e("ChatScreen", "Failed to transcribe voice note", error)
+                                        optimisticMessage?.let(messages::remove)
+                                        loadError = error.message ?: "Unable to transcribe recording"
+                                    }
+                                    runCatching { java.io.File(audioNote.filePath).delete() }
+                                    isTranscribingAudio = false
+                                }
+                            }
+                            .onFailure { error ->
+                                Log.e("ChatScreen", "Failed to stop voice note recording", error)
+                                voiceNoteRecorder.cancel()
+                                isRecordingAudio = false
+                                loadError = error.message ?: "Unable to finish recording"
+                            }
+                    } else {
+                        val permissionState = ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.RECORD_AUDIO,
+                        )
+                        if (permissionState == PackageManager.PERMISSION_GRANTED) {
+                            runCatching { voiceNoteRecorder.start() }
+                                .onSuccess {
+                                    isRecordingAudio = true
+                                    loadError = null
+                                }
+                                .onFailure { error ->
+                                    Log.e("ChatScreen", "Failed to start voice note recording", error)
+                                    loadError = error.message ?: "Unable to start recording"
+                                }
+                        } else {
+                            pendingStartRecording = true
+                            recordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    }
+                },
+                onSend = {
+                    if (isTranscribingAudio) return@Composer
+                    val messageText = composerText.trim()
+                    if (messageText.isEmpty()) return@Composer
+                    if (messageText == "/create") {
+                        showCreateDialog = true
+                        composerText = ""
+                        return@Composer
+                    }
+                    coroutineScope.launch {
+                        val optimisticMessage = ChatMessage(
+                            id = "local-${System.nanoTime()}",
+                            authorName = currentUser.displayName,
+                            body = messageText,
+                            isFromCurrentUser = true,
+                            timestamp = "Now",
+                        )
+                        messages += optimisticMessage
+                        composerText = ""
+                        runCatching {
+                            chatRepository.sendMessage(
+                                userId = currentUser.id,
+                                authorName = currentUser.displayName,
+                                body = messageText,
+                            )
+                        }.onSuccess { createdMessages ->
+                            messages += createdMessages
+                            loadError = null
+                        }.onFailure { error ->
+                            Log.e("ChatScreen", "Failed to send message", error)
+                            messages.remove(optimisticMessage)
+                            loadError = error.message ?: "Unable to send message"
+                        }
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
     }
 }
@@ -485,10 +503,11 @@ private fun Composer(
     isTranscribingAudio: Boolean,
     onRecordAudio: () -> Unit,
     onSend: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.background,
-        modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
+        modifier = modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
     ) {
         Row(
             modifier = Modifier

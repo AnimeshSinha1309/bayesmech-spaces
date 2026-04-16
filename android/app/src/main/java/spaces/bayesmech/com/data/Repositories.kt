@@ -11,7 +11,7 @@ interface ChatRepository {
         userId: String,
         authorName: String,
         body: String,
-    ): ChatMessage
+    ): List<ChatMessage>
 
     suspend fun createEvent(
         userId: String,
