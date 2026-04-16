@@ -6,6 +6,8 @@ import spaces.bayesmech.com.data.CurrentUser
 import spaces.bayesmech.com.data.EventAttendee
 import spaces.bayesmech.com.data.InterestEntry
 import spaces.bayesmech.com.data.JourneyEntry
+import spaces.bayesmech.com.data.SharedContentItem
+import spaces.bayesmech.com.data.SharedContentType
 
 internal object MockSeedData {
     val currentUser = CurrentUser(
@@ -13,7 +15,7 @@ internal object MockSeedData {
         displayName = "Animesh",
         headline = "Curious builder, runner, and low-pressure social planner",
         locationLabel = "Bengaluru",
-        avatarUrl = null,
+        avatarUrl = "avatar_animesh",
         avatarFallbackPrompt = "A warm Studio Ghibli-inspired portrait of Animesh with a thoughtful expression, soft paper-toned palette, subtle city background, and friendly social energy.",
         interestsSummary = "I’m drawn to things that feel alive, thoughtful, and a little textured. The best events for me usually combine movement, strong taste, or conversations with people who actually care about what they’re doing.",
         journey = listOf(
@@ -81,9 +83,9 @@ internal object MockSeedData {
                 mapsUrl = "https://maps.google.com/?q=Dialogues+Cafe+Koramangala+Bengaluru",
                 description = "An intimate acoustic evening on a rooftop with stripped-back sets, a small crowd, and enough room to actually talk between songs.",
                 attendees = listOf(
-                    EventAttendee("Nikhil"),
-                    EventAttendee("Rhea"),
-                    EventAttendee("Sana"),
+                    EventAttendee("Nikhil", avatarUrl = "avatar_nikhil"),
+                    EventAttendee("Rhea", avatarUrl = "avatar_rhea"),
+                    EventAttendee("Sana", avatarUrl = "avatar_sana"),
                 ),
                 additionalAttendeeCount = 13,
             ),
@@ -94,6 +96,45 @@ internal object MockSeedData {
             body = "If you'd rather keep it active, there's also a sunrise run gathering tomorrow.",
             isFromCurrentUser = false,
             timestamp = "9:05 AM",
+        ),
+    )
+
+    val sharedContent = listOf(
+        SharedContentItem(
+            id = "shared-1",
+            type = SharedContentType.Article,
+            title = "Why small group rituals build better communities",
+            url = "https://example.com/community-rituals",
+            previewText = "A long-form piece on why repeated, low-pressure gatherings create stronger ties than one-off networking events.",
+            sharedByUserId = "user-rhea",
+            sharedByName = "Rhea",
+            sharedByAvatarUrl = "avatar_rhea",
+            sharedAt = "Today, 8:12 AM",
+            sourceAppLabel = "Chrome",
+        ),
+        SharedContentItem(
+            id = "shared-2",
+            type = SharedContentType.Video,
+            title = "Sunrise run route recap",
+            url = "content://videos/mock/sunrise-run-route",
+            previewText = "Short video recap from the Cubbon Park loop the group wants to repeat this weekend.",
+            sharedByUserId = "user-nikhil",
+            sharedByName = "Nikhil",
+            sharedByAvatarUrl = "avatar_nikhil",
+            sharedAt = "Today, 7:40 AM",
+            sourceAppLabel = "Photos",
+        ),
+        SharedContentItem(
+            id = "shared-3",
+            type = SharedContentType.Article,
+            title = "Designing for better social serendipity",
+            url = "https://example.com/social-serendipity",
+            previewText = "Shared by you. For now your own posts stay visible to you while we sort out the final visibility model.",
+            sharedByUserId = currentUser.id,
+            sharedByName = currentUser.displayName,
+            sharedByAvatarUrl = currentUser.avatarUrl,
+            sharedAt = "Yesterday",
+            sourceAppLabel = "Firefox",
         ),
     )
 }

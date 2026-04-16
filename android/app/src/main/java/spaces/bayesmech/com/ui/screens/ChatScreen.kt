@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DrawerState
@@ -60,6 +61,7 @@ import spaces.bayesmech.com.data.ChatMessage
 import spaces.bayesmech.com.data.ChatRepository
 import spaces.bayesmech.com.data.CurrentUser
 import spaces.bayesmech.com.data.EventAttendee
+import spaces.bayesmech.com.ui.components.AvatarImage
 import spaces.bayesmech.com.ui.components.SpacesMenuButton
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -139,6 +141,15 @@ fun ChatScreen(
             Composer(
                 value = composerText,
                 onValueChange = { composerText = it },
+                onRecordAudio = {
+                    messages += ChatMessage(
+                        id = "audio-${messages.size + 1}",
+                        authorName = currentUser.displayName,
+                        body = "Voice note recorded. Audio input will attach here once recording is connected.",
+                        isFromCurrentUser = true,
+                        timestamp = "Now",
+                    )
+                },
                 onSend = {
                     val messageText = composerText.trim()
                     if (messageText.isEmpty()) {
@@ -361,13 +372,10 @@ private fun AttendeeFaces(
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = attendee.displayName.take(1).uppercase(),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
+                AvatarImage(
+                    avatarUrl = attendee.avatarUrl,
+                    fallbackLabel = attendee.displayName,
+                )
             }
         }
     }
@@ -377,6 +385,7 @@ private fun AttendeeFaces(
 private fun Composer(
     value: String,
     onValueChange: (String) -> Unit,
+    onRecordAudio: () -> Unit,
     onSend: () -> Unit,
 ) {
     Surface(
@@ -401,6 +410,24 @@ private fun Composer(
                 shape = RoundedCornerShape(24.dp),
                 maxLines = 4,
             )
+            Surface(
+                onClick = onRecordAudio,
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.size(42.dp),
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Mic,
+                        contentDescription = "Record audio",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
             Surface(
                 onClick = onSend,
                 shape = CircleShape,
