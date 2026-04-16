@@ -10,6 +10,11 @@ interface ChatRepository {
         authorName: String,
         body: String,
     ): ChatMessage
+
+    suspend fun transcribeAudio(
+        userId: String,
+        filePath: String,
+    ): String
 }
 
 interface CurrentUserRepository {

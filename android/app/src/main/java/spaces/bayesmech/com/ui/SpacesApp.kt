@@ -42,7 +42,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.launch
+import spaces.bayesmech.com.data.ProfileAiApi
 import spaces.bayesmech.com.data.AppRepositories
+import spaces.bayesmech.com.data.CurrentUser
 import spaces.bayesmech.com.data.backend.BackendConfig
 import spaces.bayesmech.com.ui.navigation.AppDestination
 import spaces.bayesmech.com.ui.screens.AiChatScreen
@@ -61,7 +63,8 @@ fun SpacesApp(
     val drawerScope = rememberCoroutineScope()
     val repository = remember { AppRepositories.backendRepository }
     val sharedContentRepository = remember { AppRepositories.sharedContentRepository }
-    var currentUser by remember { mutableStateOf<spaces.bayesmech.com.data.CurrentUser?>(null) }
+    val profileAiApi = remember { ProfileAiApi() }
+    var currentUser by remember { mutableStateOf<CurrentUser?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
@@ -188,6 +191,11 @@ fun SpacesApp(
                 }
                 composable(AppDestination.ProfileAi.route) {
                     AiChatScreen(
+                        currentUser = resolvedCurrentUser,
+                        profileAiApi = profileAiApi,
+                        onProfileFinalized = { updatedProfile ->
+                            currentUser = resolvedCurrentUser.copy(profileDictionary = updatedProfile)
+                        },
                         onBack = { navController.popBackStack() },
                     )
                 }

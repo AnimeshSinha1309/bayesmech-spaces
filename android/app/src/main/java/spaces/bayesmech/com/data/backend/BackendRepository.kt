@@ -3,8 +3,10 @@ package spaces.bayesmech.com.data.backend
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
@@ -16,6 +18,8 @@ import spaces.bayesmech.com.data.CurrentUserRepository
 import spaces.bayesmech.com.data.EventAttendee
 import spaces.bayesmech.com.data.InterestEntry
 import spaces.bayesmech.com.data.JourneyEntry
+import spaces.bayesmech.com.data.ProfileDictionary
+import java.io.File
 import java.io.IOException
 import java.time.Instant
 import java.time.ZoneId
@@ -65,6 +69,34 @@ class BackendRepository(
         }
     }
 
+    override suspend fun transcribeAudio(
+        userId: String,
+        filePath: String,
+    ): String {
+        return withContext(Dispatchers.IO) {
+            val audioFile = File(filePath)
+            if (!audioFile.exists()) {
+                throw IOException("Recorded audio file is missing")
+            }
+
+            val requestBody = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart(
+                    name = "file",
+                    filename = audioFile.name,
+                    body = audioFile.asRequestBody("audio/mp4".toMediaType()),
+                )
+                .build()
+
+            val request = Request.Builder()
+                .url("${BackendConfig.baseUrl}/chat/$userId/transcribe")
+                .post(requestBody)
+                .build()
+
+            executeJsonRequest(request).getString("text").trim()
+        }
+    }
+
     private fun loadBootstrap(userId: String): BootstrapPayload {
         cachedBootstrap?.let { return it }
 
@@ -99,8 +131,29 @@ class BackendRepository(
             avatarUrl = json.optNullableString("avatar_url"),
             avatarFallbackPrompt = mobileProfile?.optString("avatar_fallback_prompt").orEmpty(),
             interestsSummary = mobileProfile?.optString("interests_summary").orEmpty(),
+            profileDictionary = parseProfileDictionary(persona),
             journey = mobileProfile?.optJSONArray("journey").toJourneyEntries(),
             interests = mobileProfile?.optJSONArray("interests").toInterestEntries(),
+        )
+    }
+
+    private fun parseProfileDictionary(persona: JSONObject?): ProfileDictionary {
+        val profileJson = persona?.optJSONObject("profile_dict") ?: persona
+        return ProfileDictionary(
+            homeBase = profileJson?.optString("home_base").orEmpty(),
+            workContext = profileJson?.optString("work_context").orEmpty(),
+            socialEnergy = profileJson?.optString("social_energy").orEmpty(),
+            idealPlans = profileJson?.optString("ideal_plans").orEmpty(),
+            socialGoals = profileJson?.optString("social_goals").orEmpty(),
+            conversationSpark = profileJson?.optString("conversation_spark").orEmpty(),
+            interestTags = profileJson?.optJSONArray("interest_tags")?.let { array ->
+                buildList {
+                    for (index in 0 until array.length()) {
+                        add(array.optString(index))
+                    }
+                }.filter { it.isNotBlank() }
+            } ?: emptyList(),
+            profileNotes = profileJson?.optString("profile_notes").orEmpty(),
         )
     }
 

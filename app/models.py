@@ -133,3 +133,34 @@ class ChatMessageCreate(BaseModel):
     message_type: Literal["text", "event_card", "system_notice"] = "text"
     content_text: str
     content_structured: dict[str, Any] | None = None
+
+
+class AudioTranscriptionResponse(BaseModel):
+    text: str
+    model: str
+
+
+class ProfileAiMessage(BaseModel):
+    role: Literal["assistant", "user"]
+    text: str
+
+
+class ProfileAiTurnRequest(BaseModel):
+    current_profile_dict: dict[str, Any] = Field(default_factory=dict)
+    transcript: list[ProfileAiMessage] = Field(default_factory=list)
+    user_message: str | None = None
+    display_name: str | None = None
+
+
+class ProfileAiTurnResponse(BaseModel):
+    assistant_text: str
+    updated_profile_dict: dict[str, Any] = Field(default_factory=dict)
+    is_complete: bool
+    model: str
+
+
+class ProfileAiEndResponse(BaseModel):
+    final_profile_dict: dict[str, Any] = Field(default_factory=dict)
+    closing_text: str
+    is_complete: bool
+    model: str

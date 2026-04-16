@@ -1,19 +1,29 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from pymongo.errors import DuplicateKeyError
 
 from app.db import db
 from app.matching import score_profiles, score_user_for_event
+from app.profile_ai import (
+    continue_profile_ai_session,
+    end_profile_ai_session,
+    start_profile_ai_session,
+)
 from app.models import (
+    AudioTranscriptionResponse,
     ChatMessageCreate,
     DirectMessageCreate,
     EventCreate,
     EventMembershipCreate,
     EventPatch,
+    ProfileAiEndResponse,
+    ProfileAiTurnRequest,
+    ProfileAiTurnResponse,
     UserCreate,
     UserGoogleAuth,
     UserPatch,
     UserSignIn,
 )
+from app.transcription import transcribe_audio_bytes
 from app.utils import dm_thread_id, prefixed_id, utc_now
 
 router = APIRouter()
@@ -86,6 +96,25 @@ def _get_event_context(event_id: str) -> tuple[dict, dict | None, list[dict], se
     attendee_ids = {membership["user_id"] for membership in memberships}
     attendees = list(db.users.find({"_id": {"$in": list(attendee_ids)}})) if attendee_ids else []
     return event, creator, attendees, attendee_ids
+
+
+def _serialize_profile_ai_transcript(messages: list) -> list[dict[str, str]]:
+    return [
+        {
+            "role": message.role,
+            "text": message.text,
+        }
+        for message in messages
+    ]
+
+
+def _get_profile_dict_from_user(user: dict | None) -> dict:
+    if not user:
+        return {}
+    persona = user.get("persona") or {}
+    if isinstance(persona.get("profile_dict"), dict):
+        return persona["profile_dict"]
+    return persona if isinstance(persona, dict) else {}
 
 
 @router.get("/health")
@@ -244,6 +273,59 @@ def update_user(user_id: str, payload: UserPatch) -> dict:
     if updates:
         db.users.update_one({"_id": user_id}, {"$set": updates})
     return db.users.find_one({"_id": user_id})
+
+
+@router.post("/users/{user_id}/profile-ai/start", response_model=ProfileAiTurnResponse)
+def start_profile_ai(user_id: str, payload: ProfileAiTurnRequest) -> dict:
+    user = db.users.find_one({"_id": user_id}, {"display_name": 1, "persona": 1})
+    current_profile_dict = payload.current_profile_dict or _get_profile_dict_from_user(user)
+    display_name = payload.display_name or (user.get("display_name") if user else None)
+    return start_profile_ai_session(
+        display_name=display_name,
+        current_profile_dict=current_profile_dict,
+        transcript=_serialize_profile_ai_transcript(payload.transcript),
+    )
+
+
+@router.post("/users/{user_id}/profile-ai/reply", response_model=ProfileAiTurnResponse)
+def reply_profile_ai(user_id: str, payload: ProfileAiTurnRequest) -> dict:
+    user = db.users.find_one({"_id": user_id}, {"display_name": 1})
+    user_message = (payload.user_message or "").strip()
+    if not user_message:
+        raise HTTPException(status_code=400, detail="user_message is required")
+    return continue_profile_ai_session(
+        display_name=payload.display_name or (user.get("display_name") if user else None),
+        current_profile_dict=payload.current_profile_dict,
+        transcript=_serialize_profile_ai_transcript(payload.transcript),
+        user_message=user_message,
+    )
+
+
+@router.post("/users/{user_id}/profile-ai/transcribe", response_model=AudioTranscriptionResponse)
+async def transcribe_profile_ai_audio(user_id: str, file: UploadFile = File(...)) -> dict[str, str]:
+    _get_user_or_404(user_id)
+    audio_bytes = await file.read()
+    return transcribe_audio_bytes(
+        filename=file.filename or "profile-ai.m4a",
+        content_type=file.content_type,
+        audio_bytes=audio_bytes,
+    )
+
+
+@router.post("/users/{user_id}/profile-ai/end", response_model=ProfileAiEndResponse)
+def end_profile_ai(user_id: str, payload: ProfileAiTurnRequest) -> dict:
+    user = db.users.find_one({"_id": user_id}, {"display_name": 1})
+    result = end_profile_ai_session(
+        display_name=payload.display_name or (user.get("display_name") if user else None),
+        current_profile_dict=payload.current_profile_dict,
+        transcript=_serialize_profile_ai_transcript(payload.transcript),
+    )
+    if user:
+        db.users.update_one(
+            {"_id": user_id},
+            {"$set": {"persona.profile_dict": result["final_profile_dict"]}},
+        )
+    return result
 
 
 @router.post("/users/direct-message")
@@ -479,6 +561,17 @@ def get_main_chat(user_id: str) -> dict:
 def create_main_chat_message(user_id: str, payload: ChatMessageCreate) -> dict:
     thread = _get_main_thread_or_404(user_id)
     return _create_chat_message(thread, payload)
+
+
+@router.post("/chat/{user_id}/transcribe", response_model=AudioTranscriptionResponse)
+async def transcribe_main_chat_audio(user_id: str, file: UploadFile = File(...)) -> dict[str, str]:
+    _get_user_or_404(user_id)
+    audio_bytes = await file.read()
+    return transcribe_audio_bytes(
+        filename=file.filename or "voice-note.m4a",
+        content_type=file.content_type,
+        audio_bytes=audio_bytes,
+    )
 
 
 @router.get("/events/{event_id}/chat")
